@@ -1,0 +1,9 @@
+{
+  "name": "@aurorasense/coordinator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {".": "./src/index.ts", "./meta": "./src/meta.ts", "./supabase": "./src/supabase.ts", "./server": "./src/server.ts"},
+  "scripts": {"typecheck": "tsc --noEmit"},
+  "dependencies": {"zod": "^4.6.7"}
+}

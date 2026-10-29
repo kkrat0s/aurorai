@@ -1,0 +1,100 @@
+{
+  "totalOriginalSubmissions": 51,
+  "excluded": [
+    {
+      "eventId": "2024-05-10T07:12:00-CME-001",
+      "method": "Average of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-10T07:12:00-CME-001",
+      "method": "Median of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-09T18:23:00-CME-001",
+      "method": "Average of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-09T18:23:00-CME-001",
+      "method": "Median of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-09T09:24:00-CME-001",
+      "method": "Average of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-09T09:24:00-CME-001",
+      "method": "Median of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T22:24:00-CME-001",
+      "method": "Average of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T22:24:00-CME-001",
+      "method": "Median of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T19:12:00-CME-001",
+      "method": "Average of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T19:12:00-CME-001",
+      "method": "Median of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T12:24:00-CME-001",
+      "method": "Average of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T12:24:00-CME-001",
+      "method": "Median of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T05:36:00-CME-001",
+      "method": "Average of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    },
+    {
+      "eventId": "2024-05-08T05:36:00-CME-001",
+      "method": "Median of all Methods",
+      "issuedAtUtc": "2025-01-07T20:56:00Z",
+      "reason": "Not a pre-event independently submitted arrival prediction"
+    }
+  ],
+  "selectedEvent": "2024-05-08T12:24:00-CME-001",
+  "selectedSubmissions": 10,
+  "sourceManifest": {
+    "sourceUrl": "https://ccmc.gsfc.nasa.gov/CMESB-Earth/WS/get/predictions?CMEtimeStart=2024-05-08&CMEtimeEnd=2024-05-11",
+    "retrievedAtUtc": "2026-10-28T15:40:01Z",
+    "sha256": "c6d264cb8aab0d34e3d2cf501ce542152c10ddb7e85f404ebfb2c4ca64d9f05a",
+    "bytes": 116343,
+    "httpStatus": 200,
+    "etag": null
+  },
+  "caveat": "Provider submission times, not independently archived page vintages. Observed arrival publication time unknown."
+}

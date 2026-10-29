@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "AuroraSense Sensor",
+    "slug": "aurorasense-sensor",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.aurorasense.sensor",
+      "infoPlist": {
+        "NSMotionUsageDescription": "AuroraSense records magnetic field and motion only during a foreground observation you start."
+      }
+    },
+    "android": {
+      "package": "org.aurorasense.sensor",
+      "permissions": []
+    },
+    "plugins": [
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "AuroraSense uses motion to check the quality of your consented foreground magnetic recording."
+        }
+      ],
+      "expo-sharing"
+    ]
+  }
+}

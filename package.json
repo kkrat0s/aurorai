@@ -1,0 +1,22 @@
+{
+  "name": "aurorasense",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/web", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace @aurorasense/web",
+    "build": "npm run build --workspace @aurorasense/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint apps/web packages --max-warnings 0",
+    "test": "vitest run",
+    "test:science": "python -m unittest discover -s science/tests -v"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.39.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  }
+}

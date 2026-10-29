@@ -1,0 +1,48 @@
+{
+  "version": "phone-gp-exploration-0.1.0",
+  "frozenAtUtc": "2026-10-28T20:25:22Z",
+  "purpose": "Exploratory retrospective filtering of all finite stationary-phone samples, independent of frozen QC acceptance, with synthetic-injection signal-preservation checks.",
+  "frozenBeforeModelFit": true,
+  "priorInspection": "The owner-provided phone recordings and historical BOU replay were already inspected. This is an exploratory method demonstration, not an externally preregistered validation or a clean-target denoising study.",
+  "phoneRawSha256": "e44eee960e06ef5602c3a563c9e21ebc9b0e3f90a5cbbfac58f6a6663cf45566",
+  "seed": 20261028,
+  "durationSeconds": 600,
+  "binSeconds": 1,
+  "minimumSamplesPerBin": 5,
+  "trainingStrideSeconds": 5,
+  "medianBaselineWindowSeconds": 15,
+  "kernel": {
+    "family": "Constant times Matern nu=1.5 plus WhiteKernel",
+    "signalInitial": 1,
+    "signalBounds": [0.001, 1000],
+    "lengthScaleInitialSeconds": 60,
+    "lengthScaleBoundsSeconds": [10, 600],
+    "noiseInitial": 0.01,
+    "noiseBounds": [0.000001, 1],
+    "alpha": 0.00000001,
+    "optimizerMaxIterations": 80,
+    "optimizerRestarts": 0
+  },
+  "methods": ["raw_1s_median", "median_15s", "linear_detrended", "gp_smooth", "gp_detrended"],
+  "injections": {
+    "kind": "SYNTHETIC_INJECTION_FROM_REAL_OBSERVATORY",
+    "stationId": "BOU",
+    "component": "F",
+    "unit": "nT",
+    "allNonoverlappingTenMinuteWindows": true,
+    "interpolation": "Linear interpolation of eleven consecutive one-minute F values to one-second relative perturbations, centered per block; no gaps filled and no amplitudes rescaled.",
+    "freezePhoneFitBeforeScoring": true,
+    "refitAfterInjection": false,
+    "exampleStartUtc": "2024-05-10T16:30:00Z"
+  },
+  "metrics": ["raw_first_difference_MAD_nT_as_roughness_not_noise_floor", "median_centered_injection_gain", "centered_injection_RMSE_nT", "normalized_centered_injection_RMSE"],
+  "availability": "Offline symmetric/whole-record processing uses future samples; no operational availability or real-time performance claim.",
+  "qcPolicy": "Existing QC report remains unchanged. Its amplitude/MAD acceptance thresholds are diagnostic-only for this exploration; no valid finite sample is excluded because it failed those thresholds.",
+  "limitations": [
+    "One phone session; no independently known clean-phone target or contemporaneous professional reference.",
+    "The fitted smooth component is not identified as instrument drift or geophysical signal.",
+    "Synthetic injection is a sensitivity check, not a real phone storm or network observation.",
+    "Amplitude retention does not measure total denoising accuracy, causal artifact identification, detection skill or forecast improvement.",
+    "No filter is promoted into scientific acceptance or regional reporting by this experiment."
+  ]
+}

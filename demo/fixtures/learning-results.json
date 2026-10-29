@@ -1,0 +1,247 @@
+{
+  "status": "MEASURED_RETROSPECTIVE_EVALUATION",
+  "protocolVersion": "bou-x-30m-v1",
+  "computedAtUtc": "2026-10-28T21:44:09Z",
+  "protocolSha256": "4f7f225a297a6028203d2380cff1a1c25246f4a09fe37e0eb24bd7b9095a0545",
+  "task": "Predict USGS BOU five-minute mean geographic X during [issuance+30m, issuance+35m), minus median X over [issuance-60m, issuance).",
+  "unit": "nT",
+  "horizonMinutes": 30,
+  "operationalClaim": false,
+  "phoneContributionEvaluated": false,
+  "trainingCases": 2191,
+  "testCases": 851,
+  "eventCoverage": [
+    {
+      "eventId": "train-march2023",
+      "split": "train",
+      "usableCases": 769,
+      "omniRows": 1152,
+      "groundRows": 5761,
+      "excluded": {
+        "missingGround": 49,
+        "missingSolarWind": 316
+      }
+    },
+    {
+      "eventId": "train-april2023",
+      "split": "train",
+      "usableCases": 1004,
+      "omniRows": 1152,
+      "groundRows": 5761,
+      "excluded": {
+        "missingGround": 0,
+        "missingSolarWind": 130
+      }
+    },
+    {
+      "eventId": "train-june2023-control",
+      "split": "train",
+      "usableCases": 418,
+      "omniRows": 864,
+      "groundRows": 4321,
+      "excluded": {
+        "missingGround": 13,
+        "missingSolarWind": 415
+      }
+    },
+    {
+      "eventId": "test-may2024-control",
+      "split": "test",
+      "usableCases": 370,
+      "omniRows": 864,
+      "groundRows": 4321,
+      "excluded": {
+        "missingGround": 0,
+        "missingSolarWind": 476
+      }
+    },
+    {
+      "eventId": "test-may2024-storm",
+      "split": "test",
+      "usableCases": 481,
+      "omniRows": 864,
+      "groundRows": 4321,
+      "excluded": {
+        "missingGround": 0,
+        "missingSolarWind": 365
+      }
+    }
+  ],
+  "pooledScores": {
+    "persistence": {
+      "MAE_nT": 29.093952761457263,
+      "RMSE_nT": 61.38398892012452,
+      "bias_nT": 5.541028202115095
+    },
+    "southward-coupling-ridge": {
+      "MAE_nT": 32.821332032906156,
+      "RMSE_nT": 64.44572471462524,
+      "bias_nT": 7.6586656637004324
+    },
+    "instantaneous-plus-ground-ridge": {
+      "MAE_nT": 29.083326440443763,
+      "RMSE_nT": 58.123754068477766,
+      "bias_nT": 8.294541942169694
+    },
+    "history-plus-ground-ridge": {
+      "MAE_nT": 29.480095264816544,
+      "RMSE_nT": 58.693825866108995,
+      "bias_nT": 10.050311745401407
+    }
+  },
+  "eventScores": {
+    "test-may2024-control": {
+      "persistence": {
+        "MAE_nT": 10.00838216216219,
+        "RMSE_nT": 17.15977749919718,
+        "bias_nT": -1.2373508108108335
+      },
+      "southward-coupling-ridge": {
+        "MAE_nT": 13.642481444945307,
+        "RMSE_nT": 24.18809533556915,
+        "bias_nT": -0.14983315623078633
+      },
+      "instantaneous-plus-ground-ridge": {
+        "MAE_nT": 11.367691553610053,
+        "RMSE_nT": 19.482035536473294,
+        "bias_nT": -1.3573800283259208
+      },
+      "history-plus-ground-ridge": {
+        "MAE_nT": 11.702607780605403,
+        "RMSE_nT": 19.115370805850922,
+        "bias_nT": -0.9188524166246572
+      }
+    },
+    "test-may2024-storm": {
+      "persistence": {
+        "MAE_nT": 43.775160914761166,
+        "RMSE_nT": 80.24926770043919,
+        "bias_nT": 10.75516590436581
+      },
+      "southward-coupling-ridge": {
+        "MAE_nT": 47.574294023645265,
+        "RMSE_nT": 83.05426558870049,
+        "bias_nT": 13.665203217493676
+      },
+      "instantaneous-plus-ground-ridge": {
+        "MAE_nT": 42.71073789185431,
+        "RMSE_nT": 75.39997501267301,
+        "bias_nT": 15.719097304089397
+      },
+      "history-plus-ground-ridge": {
+        "MAE_nT": 43.15508563728664,
+        "RMSE_nT": 76.24869505565532,
+        "bias_nT": 18.488130331575302
+      }
+    }
+  },
+  "limitations": [
+    "OMNI and USGS historical availability is unknown. This is a retrospective, observation-causal research experiment; no operational backtest skill is claimed. OMNI times are bow-shock-nose arrival times, not original spacecraft measurement times.",
+    "Small purposive set of event blocks, one station and one held-out major storm; no population-level skill inference.",
+    "Mean absolute error and RMSE are amplitude metrics, not auroral visibility probabilities.",
+    "No phone data are model inputs; no phone forecast improvement is claimed."
+  ],
+  "sourceManifests": [
+    {
+      "eventId": "train-march2023",
+      "sourceId": "NASA_OMNI_HRO_5MIN",
+      "sourceUrl": "https://cdaweb.gsfc.nasa.gov/hapi/data?id=OMNI_HRO_5MIN&parameters=BX_GSE%2CBY_GSM%2CBZ_GSM%2Cflow_speed%2Cproton_density%2CPressure&time.min=2023-03-22T00%3A00%3A00Z&time.max=2023-03-26T00%3A00%3A00Z&format=json",
+      "retrievedAtUtc": "2026-10-28T15:43:26Z",
+      "sha256": "6164b52ac70f34ce5e9071dac9b2c73512e2200693daec61fa1681e3fc06f875",
+      "bytes": 74114,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "train-march2023",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2023-03-22T00%3A00%3A00Z&endtime=2023-03-26T00%3A00%3A00Z&sampling_period=60&format=json",
+      "retrievedAtUtc": "2026-10-28T15:43:32Z",
+      "sha256": "8b81d48058959d3f5826628f4113d8928e52e22ffbdaa93938024b304288a694",
+      "bytes": 349158,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "train-april2023",
+      "sourceId": "NASA_OMNI_HRO_5MIN",
+      "sourceUrl": "https://cdaweb.gsfc.nasa.gov/hapi/data?id=OMNI_HRO_5MIN&parameters=BX_GSE%2CBY_GSM%2CBZ_GSM%2Cflow_speed%2Cproton_density%2CPressure&time.min=2023-04-22T00%3A00%3A00Z&time.max=2023-04-26T00%3A00%3A00Z&format=json",
+      "retrievedAtUtc": "2026-10-28T15:43:35Z",
+      "sha256": "7eda8684bc9c1e939639e96175f1676a15bdcc9160aaaae3bf853d57e08cef84",
+      "bytes": 74013,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "train-april2023",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2023-04-22T00%3A00%3A00Z&endtime=2023-04-26T00%3A00%3A00Z&sampling_period=60&format=json",
+      "retrievedAtUtc": "2026-10-28T15:43:41Z",
+      "sha256": "79b4f1e01c852b5ecbeb706b817a015d048c5eed33ef6d8bd3fa73cc186d9b54",
+      "bytes": 350157,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "train-june2023-control",
+      "sourceId": "NASA_OMNI_HRO_5MIN",
+      "sourceUrl": "https://cdaweb.gsfc.nasa.gov/hapi/data?id=OMNI_HRO_5MIN&parameters=BX_GSE%2CBY_GSM%2CBZ_GSM%2Cflow_speed%2Cproton_density%2CPressure&time.min=2023-06-10T00%3A00%3A00Z&time.max=2023-06-13T00%3A00%3A00Z&format=json",
+      "retrievedAtUtc": "2026-10-28T15:43:44Z",
+      "sha256": "fdb7e5b4c9ecca6fffbd53dfeab7f7f57340b8b22c98eeca00140b4a56c59986",
+      "bytes": 55776,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "train-june2023-control",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2023-06-10T00%3A00%3A00Z&endtime=2023-06-13T00%3A00%3A00Z&sampling_period=60&format=json",
+      "retrievedAtUtc": "2026-10-28T15:43:51Z",
+      "sha256": "fb42b83cb5ac53d9f8108033e3e527b4dd75c2ca19bbd5c16eb030365d0b8692",
+      "bytes": 262813,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "test-may2024-control",
+      "sourceId": "NASA_OMNI_HRO_5MIN",
+      "sourceUrl": "https://cdaweb.gsfc.nasa.gov/hapi/data?id=OMNI_HRO_5MIN&parameters=BX_GSE%2CBY_GSM%2CBZ_GSM%2Cflow_speed%2Cproton_density%2CPressure&time.min=2024-05-01T00%3A00%3A00Z&time.max=2024-05-04T00%3A00%3A00Z&format=json",
+      "retrievedAtUtc": "2026-10-28T15:43:53Z",
+      "sha256": "2a8e8f03e620b880a70802442170ff2c24ecbcb5d72050f8f4026a33b29d8144",
+      "bytes": 58889,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "test-may2024-control",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2024-05-01T00%3A00%3A00Z&endtime=2024-05-04T00%3A00%3A00Z&sampling_period=60&format=json",
+      "retrievedAtUtc": "2026-10-28T15:44:03Z",
+      "sha256": "c7df3d2a6ffb7457e4609ef7deecc4e24e608a0979c7f3ead9f3b5196ebe0cb1",
+      "bytes": 262653,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "test-may2024-storm",
+      "sourceId": "NASA_OMNI_HRO_5MIN",
+      "sourceUrl": "https://cdaweb.gsfc.nasa.gov/hapi/data?id=OMNI_HRO_5MIN&parameters=BX_GSE%2CBY_GSM%2CBZ_GSM%2Cflow_speed%2Cproton_density%2CPressure&time.min=2024-05-10T00%3A00%3A00Z&time.max=2024-05-13T00%3A00%3A00Z&format=json",
+      "retrievedAtUtc": "2026-10-28T15:44:05Z",
+      "sha256": "4dfc0d0c7d0f0538d4c69ce540b94bb4c81e7d823352ac16063d97edc4edf4cd",
+      "bytes": 57771,
+      "httpStatus": 200,
+      "etag": null
+    },
+    {
+      "eventId": "test-may2024-storm",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2024-05-10T00%3A00%3A00Z&endtime=2024-05-13T00%3A00%3A00Z&sampling_period=60&format=json",
+      "retrievedAtUtc": "2026-10-28T15:44:10Z",
+      "sha256": "94d0e2ecc9c413e2721914f4410fe65204f629fb5c686aa4f5bc151841fe02bb",
+      "bytes": 262680,
+      "httpStatus": 200,
+      "etag": null
+    }
+  ],
+  "casesSha256": "070459db4760a1f9f060119f0541d19a2f1cbe05842c370c8c64f2a32069a1da"
+}

@@ -1,0 +1,67 @@
+{
+  "version": "bou-x-30m-v1",
+  "frozenAtUtc": "2026-10-28T15:43:16Z",
+  "task": "Predict USGS BOU five-minute mean geographic X during [issuance+30m, issuance+35m), minus median X over [issuance-60m, issuance).",
+  "unit": "nT",
+  "horizonMinutes": 30,
+  "targetWindowMinutes": 5,
+  "historyMinutes": 60,
+  "issuanceCadenceMinutes": 5,
+  "solarWindLatestBinStartOffsetMinutes": -5,
+  "operationalClaim": false,
+  "availabilityPolicy": "OMNI and USGS historical availability is unknown. This is a retrospective, observation-causal research experiment; no operational backtest skill is claimed. OMNI times are bow-shock-nose arrival times, not original spacecraft measurement times.",
+  "seed": 20261028,
+  "ridgeAlpha": 10,
+  "completeCaseOnly": true,
+  "events": [
+    {
+      "id": "train-march2023",
+      "split": "train",
+      "start": "2023-03-22T00:00:00Z",
+      "end": "2023-03-26T00:00:00Z"
+    },
+    {
+      "id": "train-april2023",
+      "split": "train",
+      "start": "2023-04-22T00:00:00Z",
+      "end": "2023-04-26T00:00:00Z"
+    },
+    {
+      "id": "train-june2023-control",
+      "split": "train",
+      "start": "2023-06-10T00:00:00Z",
+      "end": "2023-06-13T00:00:00Z"
+    },
+    {
+      "id": "test-may2024-control",
+      "split": "test",
+      "start": "2024-05-01T00:00:00Z",
+      "end": "2024-05-04T00:00:00Z"
+    },
+    {
+      "id": "test-may2024-storm",
+      "split": "test",
+      "start": "2024-05-10T00:00:00Z",
+      "end": "2024-05-13T00:00:00Z"
+    }
+  ],
+  "models": [
+    "persistence",
+    "southward-coupling-ridge",
+    "instantaneous-plus-ground-ridge",
+    "history-plus-ground-ridge"
+  ],
+  "metrics": [
+    "MAE_nT",
+    "RMSE_nT",
+    "bias_nT"
+  ],
+  "exclusions": "Exclude any case with a missing target/prior ground minute or a missing solar-wind feature over the previous hour. Do not fill gaps or select favorable test periods after inspecting scores.",
+  "limitations": [
+    "Small purposive set of event blocks, one station and one held-out major storm; no population-level skill inference.",
+    "Mean absolute error and RMSE are amplitude metrics, not auroral visibility probabilities.",
+    "No phone data are model inputs; no phone forecast improvement is claimed."
+  ],
+  "frozenBeforeModelFit": true,
+  "priorInspection": "May 2024 BOU source window already acquired for replay; models, features, event split and scoring protocol fixed before fitting or viewing model scores. This is not an externally preregistered study."
+}

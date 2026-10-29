@@ -1,0 +1,91 @@
+{
+  "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2024-05-10T00%3A00%3A00Z&endtime=2024-05-13T00%3A00%3A00Z&sampling_period=60&format=json",
+  "retrievedAtUtc": "2026-10-28T15:40:08Z",
+  "sha256": "9c5eff870fae662609063c4a317a99f91911682970d8433c6afd4b7301e2099a",
+  "bytes": 262680,
+  "httpStatus": 200,
+  "etag": null,
+  "metadata": {
+    "intermagnet": {
+      "imo": {
+        "iaga_code": "BOU",
+        "name": "Boulder",
+        "coordinates": [
+          -105.237,
+          40.137,
+          1682.0
+        ]
+      },
+      "reported_orientation": "XYZF",
+      "sensor_orientation": "HDZ",
+      "data_type": "adjusted",
+      "sampling_period": 60.0,
+      "digital_sampling_rate": 0.01
+    },
+    "status": 200,
+    "generated": "2026-10-28T15:40:07Z",
+    "url": null
+  },
+  "components": [
+    {
+      "stationId": "BOU",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2024-05-10T00%3A00%3A00Z&endtime=2024-05-13T00%3A00%3A00Z&sampling_period=60&format=json",
+      "kind": "MEASURED_ARCHIVAL",
+      "component": "X",
+      "frame": "GEO",
+      "unit": "nT",
+      "cadenceSeconds": 60.0,
+      "status": "adjusted",
+      "availableAtUtc": null,
+      "retrievedAtUtc": "2026-10-28T15:40:08Z",
+      "sourceChecksum": "9c5eff870fae662609063c4a317a99f91911682970d8433c6afd4b7301e2099a",
+      "missingCount": 0
+    },
+    {
+      "stationId": "BOU",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2024-05-10T00%3A00%3A00Z&endtime=2024-05-13T00%3A00%3A00Z&sampling_period=60&format=json",
+      "kind": "MEASURED_ARCHIVAL",
+      "component": "Y",
+      "frame": "GEO",
+      "unit": "nT",
+      "cadenceSeconds": 60.0,
+      "status": "adjusted",
+      "availableAtUtc": null,
+      "retrievedAtUtc": "2026-10-28T15:40:08Z",
+      "sourceChecksum": "9c5eff870fae662609063c4a317a99f91911682970d8433c6afd4b7301e2099a",
+      "missingCount": 0
+    },
+    {
+      "stationId": "BOU",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2024-05-10T00%3A00%3A00Z&endtime=2024-05-13T00%3A00%3A00Z&sampling_period=60&format=json",
+      "kind": "MEASURED_ARCHIVAL",
+      "component": "Z",
+      "frame": "GEO",
+      "unit": "nT",
+      "cadenceSeconds": 60.0,
+      "status": "adjusted",
+      "availableAtUtc": null,
+      "retrievedAtUtc": "2026-10-28T15:40:08Z",
+      "sourceChecksum": "9c5eff870fae662609063c4a317a99f91911682970d8433c6afd4b7301e2099a",
+      "missingCount": 4321
+    },
+    {
+      "stationId": "BOU",
+      "sourceId": "USGS_BOU",
+      "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&starttime=2024-05-10T00%3A00%3A00Z&endtime=2024-05-13T00%3A00%3A00Z&sampling_period=60&format=json",
+      "kind": "MEASURED_ARCHIVAL",
+      "component": "F",
+      "frame": "GEO",
+      "unit": "nT",
+      "cadenceSeconds": 60.0,
+      "status": "adjusted",
+      "availableAtUtc": null,
+      "retrievedAtUtc": "2026-10-28T15:40:08Z",
+      "sourceChecksum": "9c5eff870fae662609063c4a317a99f91911682970d8433c6afd4b7301e2099a",
+      "missingCount": 0
+    }
+  ]
+}

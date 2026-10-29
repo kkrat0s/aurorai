@@ -1,0 +1,23 @@
+node_modules/
+.next/
+.expo/
+dist/
+dist-android/
+dist-ios/
+coverage/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env*
+!.env.example
+data/private/
+# Native exports may be copied to the repository root for local inspection.
+phone-*-json.json
+phone-*-qc.json
+phone-*-csv.csv
+data/raw/
+science/private/
+*.log
+*.tsbuildinfo
+AuroraSense_Project_Pack_*.zip
