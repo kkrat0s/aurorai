@@ -5,7 +5,12 @@ export async function GET(){
   const retrievedAtUtc=new Date().toISOString();
   const entries=Object.entries(NOAA_URLS);
   const results=await Promise.allSettled(entries.map(async([sourceId,url])=>{
-    const response=await fetch(url,{signal:AbortSignal.timeout(12_000),next:{revalidate:300},headers:{Accept:'application/json'}});
+    const isLarge = sourceId === 'wind';
+    const response=await fetch(url,{
+      signal:AbortSignal.timeout(12_000),
+      ...(isLarge ? { cache: 'no-store' } : { next: { revalidate: 300 } }),
+      headers:{Accept:'application/json'}
+    });
     if(!response.ok)throw new Error(`${sourceId}: upstream HTTP ${response.status}`);
     const raw=await response.text();
     if(raw.length>5_000_000)throw new Error(`${sourceId}: response exceeds limit`);

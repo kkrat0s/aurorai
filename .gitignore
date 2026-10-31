@@ -11,7 +11,10 @@ __pycache__/
 .pytest_cache/
 .env*
 !.env.example
+!.env.local.example
+!apps/web/.env.local.example
 data/private/
+data/database/
 # Native exports may be copied to the repository root for local inspection.
 phone-*-json.json
 phone-*-qc.json

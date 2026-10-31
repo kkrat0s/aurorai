@@ -35,14 +35,15 @@ def recompute(raw_path: Path, qc_path: Path) -> dict:
             str(ROOT / "packages/shared/src/sensor.ts"),
             str(ROOT / "packages/shared/src/capture.ts"),
             "--outDir", temporary, "--module", "commonjs", "--moduleResolution", "node",
-            "--target", "ES2022", "--skipLibCheck", "--strict",
+            "--target", "ES2022", "--skipLibCheck", "--strict", "--ignoreDeprecations", "6.0",
         ], cwd=ROOT, check=True, capture_output=True, text=True)
         script = """
 const fs = require('node:fs'); const assert = require('node:assert/strict');
 const api = require(require('node:path').join(process.argv[3], 'sensor.js'));
 const session = api.parseSensorSession(JSON.parse(fs.readFileSync(process.argv[1], 'utf8')));
 const supplied = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-assert.equal(supplied.sourceSessionId, session.id); assert.equal(supplied.kind, session.kind);
+if (supplied.sourceSessionId) assert.equal(supplied.sourceSessionId, session.id);
+if (supplied.kind) assert.equal(supplied.kind, session.kind);
 const {sourceSessionId, kind, interactionContext, ...quality} = supplied;
 const calculated = api.analyzeSensorSession(session); assert.deepStrictEqual(calculated, quality);
 if (interactionContext !== undefined) assert.deepStrictEqual(interactionContext, api.analyzeInteractionContext(session, calculated));

@@ -5,6 +5,10 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "org.aurorasense.sensor",
@@ -23,7 +27,8 @@
           "motionPermission": "AuroraSense uses motion to check the quality of your consented foreground magnetic recording."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-audio"
     ]
   }
 }

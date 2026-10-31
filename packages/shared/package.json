@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {"./sensor": "./src/sensor.ts"},
+  "exports": {
+    "./sensor": "./src/sensor.ts",
+    "./magnetic-classifier": "./src/magnetic-classifier.ts",
+    "./prescriptive-evaluator": "./src/prescriptive-evaluator.ts"
+  },
   "scripts": {"typecheck": "tsc --noEmit"}
 }

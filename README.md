@@ -66,7 +66,7 @@ CCMC submission time is an availability proxy; independently archived page vinta
 
 1. In **Historical replay**, select **Aurora Map**. Expect the historical model layer to be **unavailable**: no verified 2024 OVATION grid is loaded.
 2. Select **Live**. Inspect the saved/latest NOAA OVATION grid, valid time, input observation time and freshness.
-3. Toggle **Northern / Southern**, **Twilight shading** and **Coarse viewing region**. Verify the map and calculated Sun elevation/darkness update.
+3. Toggle **Northern / Southern**, **Twilight shading** and **Coarse viewing region**. Verify the map renders the chosen regional target pin (Boulder, Fairbanks, Tromsø, or Hobart) alongside calculated Sun elevation and darkness.
 4. Read the distinct modeled, ground magnetic and independently confirmed optical layers. **NONE LOADED** sightings and **Unknown** clouds are expected.
 
 The map uses a geographic polar graticule and approximate geometric darkness. Validated magnetic coordinates, clouds, optical confirmations and local visibility probabilities are not implemented. Current NOAA data must never be relabeled as a 2024 forecast.
@@ -82,7 +82,7 @@ The map uses a geographic polar graticule and approximate geometric darkness. Va
    ```
 
 4. Confirm **SYNTHETIC** provenance, DEVICE-frame X/Y/Z in **µT**, scalar deviation, approximately **10 Hz** cadence and QC flags. The fixture has **1,601 samples over 160 seconds**, a fixed 120-second baseline, generated 12 µT interference at 135–140 seconds and rotation at 145–148 seconds. Expect local-interference rejection and an inconclusive regional interpretation.
-5. High-water cards must show **partial** usable coverage, never an invented multi-hour history. Flagged samples do not enter usable statistics.
+5. Hover or touch-drag across the time-series trace: verify the interactive crosshair hairline, highlighted sample point, and tooltip badge displaying UTC time and amplitude. High-water cards must show **partial** usable coverage, never an invented multi-hour history. Flagged samples do not enter usable statistics.
 6. **Forget imported session** removes the trace. Reimport and **Reset demo**: import and prior audit intentionally remain until Forget/reload. Reload starts a new in-memory session.
 
 **This sample is mathematically generated, not historical phone evidence or measured sensor noise.** See [fixture documentation](demo/fixtures/SYNTHETIC_PHONE_FIXTURE.md). Phone and historical observatory traces are different periods, not a demonstrated correlation.
@@ -105,7 +105,7 @@ Local import and policy replay are separate workflows. Importing a real file doe
 
 1. Open **Why?**. Use numbered controls or **Next step / Previous** through solar disturbance, dayside reconnection, magnetotail energy transfer, particle precipitation and atmospheric emissions.
 2. Verify scientific source links and the distinction between magnetic measurements and visible light. Return through **Back to the evidence**, Escape or **Close panel**.
-3. Open **Research**; inspect measured learning scores, exclusions, manifests/checksums, limitations and the audit.
+3. Open **Research**; inspect measured learning scores, model MAE comparison bar charts (contrasting persistence, coupling baselines, and candidate), exclusions, manifests/checksums, limitations and the audit.
 4. Repeat at phone width. Check tabs, map controls, import, modal close, tables and downloads. Test keyboard Tab/Enter/Escape.
 
 ### F. Backend failure behavior
@@ -166,6 +166,13 @@ Read/grant adult participation and recording consent. Place the phone screen-up 
 For a separate interference test, optional **guided visual cues** avoid marker taps. Manual touches have a fixed interaction context, never automatic QC exemption. Scheduled cues request actions; they do not prove those actions occurred. No GPS, vibration/audio stimulus, background recording or speech transcription is implemented. Avoid saturating the sensor and keep accessories away during quiet acquisition.
 
 Read [the full physical protocol](docs/sensor-experiment.md). Emulators and bundle exports cannot establish sensor performance. The web computer's loopback address is not another phone's address; use Expo's supplied native connection for collection.
+
+### Magnetic Audio Explorer (Educational Sonification Test Mode)
+
+Before starting a scientific session, toggle **Magnetic Audio Explorer** in the mobile app. It synthesizes real-time magnetometer readings into sound across 6 frequency tiers (220 Hz calm baseline hum up to 1,320 Hz high-frequency warning):
+- **Physical acoustic intuition:** Move your hand, tilt the phone, or bring a watch or cable near: hear how the tone spikes in pitch and tempo.
+- **The scientific lesson:** Hand movements and nearby metal create **2,000–30,000 nT** of local noise, while a real solar-storm CME response at mid-latitudes produces only **50–500 nT**. Hearing this contrast immediately explains why the phone must be completely still on a nonmagnetic support during the 10-minute scientific recording.
+- In the web app, test the same acoustic behavior in **Ground Truth → Prepare a 10-minute observation → Interactive Audio Simulator**.
 
 **Actual iPhone 14 Pro Max evidence:** partial interference run, 3,042 samples / 304.844 s / 9.9756 Hz, stopped on backgrounding; stationary repeat, 5,987 samples / 600.032 s / 9.97614 Hz, automatic completion, no >0.5 s gaps. Both failed unchanged scientific QC. The second baseline MAD was **801 nT** against the initial **250 nT** engineering gate, with exploratory endpoint change around **−9,096 nT**. Neither establishes intrinsic noise, storm detection or calibrated accuracy. Android hardware remains untested. [Measured report](docs/phone-experiment-2026-10-28.md).
 
@@ -287,7 +294,7 @@ The saved demo needs **none** of these `.env.example` variables:
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key; RLS still required |
 | `SUPABASE_SECRET_KEY` | Server-only trusted persistence/budget/journal |
 
-For an authorized test project, copy the example into `apps/web/.env.local`, enter values locally and restart. Never prefix secrets with `NEXT_PUBLIC_` or put them in Git/screenshots/prompts.
+For an authorized test project, copy `env.local.example` (or `apps/web/.env.local.example`) into `apps/web/.env.local`, enter values matching the documented key format and restart. Never prefix secrets with `NEXT_PUBLIC_` or put them in Git/screenshots/prompts. `apps/web/.env.local` remains securely excluded by `.gitignore`.
 
 The real route accepts only `eventId` with a Supabase Bearer token, verifies administrator-controlled researcher/cell metadata and adult consent, then loads trusted persisted summaries. Auth UX and end-to-end phone ingestion are absent. All three migrations and pgTAP tests are supplied, **not executed against a hosted database**. Missing config fails 503, unauthorized access fails, missing ingestion fails 409. Real invitation delivery remains deliberately blocked.
 
@@ -417,7 +424,7 @@ Authoritative scope: [goal.md](goal.md), [assets.md](assets.md), [plan.md](plan.
 | QC rejects all samples | Inspect raw flags/context; retain failure. Filtering cannot certify a regional event. |
 | Missing 2024 oval/clouds/sightings | Expected missing evidence; it is not fabricated. |
 | NOAA refresh fails | Read error/stale timestamps; saved replay remains usable. |
-| Server warns a NOAA response exceeds the 2 MB Next fetch-cache limit | The observed wind payload was about 3.17 MB and still parsed successfully. That raw fetch is not cached by Next; avoid rapid repeated refresh. Response CDN caching is separate and unverified on Vercel. |
+| Server warns a NOAA response exceeds the 2 MB Next fetch-cache limit | Resolved: the ~3.17 MB wind payload upstream fetch now specifies `cache: 'no-store'`, eliminating Next.js fetch-cache size warnings while preserving downstream `s-maxage=300` CDN caching. |
 | Agent 503/409 | Config/trusted ingestion absent; follow integration gates, not a mislabeled mock. |
 | Scores differ | Python 3.12/pinned requirements, root directory, `--offline`; inspect checksums and counts. |
 
