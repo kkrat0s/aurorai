@@ -1,14 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   evaluateAuroraAlertDecision,
   evaluateSamOpticalSegmentation,
   evaluateSparkMeasurementInsight,
   evaluateWonderRedTeam,
   MUSE_IMAGE_CONCEPTS,
+  runLiveMetaSparkInsight,
 } from './meta-suite';
 
 describe('Meta AI Suite', () => {
-  it('evaluates clean physical recording with Muse Spark 1.3 as supported regional candidate', () => {
+  it('evaluates clean physical recording with Muse Spark 1.3 as local candidate while keeping single-site regionalVerdict INCONCLUSIVE', () => {
     const result = evaluateSparkMeasurementInsight({
       sessionSummary: {
         durationSeconds: 600,
@@ -33,10 +34,14 @@ describe('Meta AI Suite', () => {
     });
 
     expect(result.model).toBe('muse-spark-1.3');
+    expect(result.executionMode).toBe('LOCAL_DETERMINISTIC_EVALUATOR');
+    expect(result.modelCalled).toBe(false);
+    expect(result.regionalVerdict).toBe('INCONCLUSIVE');
     expect(result.scientificVerdict).toBe('SUPPORTED_REGIONAL_CANDIDATE');
     expect(result.confidence).toBe('HIGH');
     expect(result.physicalInterpretation.rateOfChangeAnalysis).toContain('dB/dt');
     expect(result.narrative).toContain('Meta Muse Spark 1.3');
+    expect(result.narrative).toContain('INCONCLUSIVE');
     expect(result.recommendedNextActions).toHaveLength(3);
   });
 
@@ -59,8 +64,55 @@ describe('Meta AI Suite', () => {
     });
 
     expect(result.scientificVerdict).toBe('REJECTED_CONTAMINATED');
+    expect(result.regionalVerdict).toBe('REJECTED');
     expect(result.confidence).toBe('HIGH');
     expect(result.narrative).toContain('rejected by scientific QC');
+  });
+
+  it('calls live Meta Responses endpoint when API key is provided and preserves deterministic regionalVerdict', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'resp_123',
+        model: 'muse-spark-1.3',
+        status: 'completed',
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                text: 'Live Muse Spark 1.3 summary: Clean 62.0 nT stationary baseline with -333.5 nT drift. Single-phone regional verdict remains INCONCLUSIVE.',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const result = await runLiveMetaSparkInsight(
+      {
+        sessionSummary: {
+          durationSeconds: 600,
+          nominalHz: 10,
+          actualHz: 9.97,
+          baselineMedianMicroT: 46.1,
+          noiseMadNt: 62.0,
+          p95DeltaNt: 432.5,
+          maxDeltaNt: 924.6,
+          endpointDriftNt: -333.5,
+          rateOfChangeMicroTPerSec: 0.076,
+        },
+        qcResult: { accepted: true, flags: [] },
+      },
+      'meta_live_test_key_123456',
+      mockFetch as unknown as typeof fetch
+    );
+
+    expect(result.executionMode).toBe('LIVE_META_API');
+    expect(result.modelCalled).toBe(true);
+    expect(result.simulatedProvider).toBe(false);
+    expect(result.regionalVerdict).toBe('INCONCLUSIVE');
+    expect(result.narrative).toContain('Live Muse Spark 1.3 summary');
   });
 
   it('runs Muse Wonder adversarial red-team to enforce scientific invariants', () => {
@@ -82,6 +134,8 @@ describe('Meta AI Suite', () => {
     });
 
     expect(result.model).toBe('muse-wonder');
+    expect(result.executionMode).toBe('LOCAL_DETERMINISTIC_EVALUATOR');
+    expect(result.modelCalled).toBe(false);
     expect(result.critiqueStatus).toBe('CHALLENGE_RAISED');
     expect(result.skepticalChallenges.length).toBeGreaterThanOrEqual(1);
     expect(result.skepticalChallenges[0]).toContain('Single device isolation');
@@ -147,10 +201,11 @@ describe('Meta AI Suite', () => {
       expect(concept.title.length).toBeGreaterThan(5);
       expect(concept.scientificPrompt.length).toBeGreaterThan(20);
       expect(concept.model).toBe('muse-image');
+      expect(concept.executionMode).toBe('CONCEPTUAL_SPECIFICATION');
     }
   });
 
-  it('generates SAM 3.1 optical sky segmentation masks', () => {
+  it('generates SAM 3.1 optical sky segmentation masks with honest conceptual specification metadata', () => {
     const sam = evaluateSamOpticalSegmentation({
       imageWidth: 1920,
       imageHeight: 1080,
@@ -158,6 +213,8 @@ describe('Meta AI Suite', () => {
     });
 
     expect(sam.model).toBe('sam-3.1');
+    expect(sam.executionMode).toBe('CONCEPTUAL_SPECIFICATION_DEMO');
+    expect(sam.modelCalled).toBe(false);
     expect(sam.masks).toHaveLength(4);
     expect(sam.opticalVerification).toBe('CONFIRMED_AURORAL_EMISSION');
   });

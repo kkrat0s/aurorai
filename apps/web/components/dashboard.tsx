@@ -28,6 +28,7 @@ import Chart from './chart';
 import Ensemble from './ensemble';
 import PolarMap from './polar-map';
 import EvaluationPanel from './evaluation-panel';
+import { SolarMagnetosphere3DCanvas } from './solar-storm-3d';
 
 type Tab='storm'|'map'|'ground';
 type Drawer='why'|'research'|'capture'|null;
@@ -75,13 +76,14 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [dbStatus, setDbStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
   const [dbResult, setDbResult] = useState<{ submissionId?: string; sha256?: string; message?: string } | null>(null);
+  const [journeyStep, setJourneyStep] = useState<number>(1);
   const [networkAggregate, setNetworkAggregate] = useState<{
     totalSubmissions: number;
     acceptedSubmissions: number;
     averageNoiseMadNt: number;
     byPlacementQuality: { EXCELLENT: number; FAIR: number; POOR: number };
     byActivityTier: { G0_QUIET: number; G1_G2_MODERATE: number; G3_G4_SEVERE: number; G5_EXTREME: number };
-    regionalCoherence: { verifiedIndependentSites: number; referenceStation: string; status: string; coherenceScore: number };
+    regionalCoherence: { verifiedIndependentSites: number; referenceStation: string; status: string; coherenceScore: number | null };
   } | null>(null);
   const audioCtxRef=useRef<AudioContext|null>(null);
   const osc1Ref=useRef<OscillatorNode|null>(null);
@@ -318,6 +320,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
       <div className="content-grid"><div className="primary-column">
         {tab==='storm'&&<>
           <section className="panel"><div className="panel-heading"><div><div className="eyebrow">01 / STORM TRACK</div><h2>{mode==='replay'?'One eruption. A range of arrivals.':'The solar wind, near Earth.'}</h2></div><Badge tone="violet">{mode==='replay'?'MODEL FORECAST':'NOAA UPSTREAM'}</Badge></div>
+            <SolarMagnetosphere3DCanvas initialScenario={mode==='replay'?'MAY_2024_G5':'QUIET_WIND'} />
             {mode==='replay'?<><div className="sun-earth"><div className="sun-disc"/><div className="propagation"><span>May 8 · CME observed</span><div className="propagation-line"/><small>Heliospheric propagation · conceptual schematic</small></div><div className="earth-disc"/></div><div className="stat-row"><Stat label="ORIGINAL SUBMISSIONS" value={String(forecasts.length)} detail={`${new Set(forecasts.map(f=>f.method)).size} distinct methods · revisions retained`}/><Stat label="ARRIVAL ESTIMATE SPREAD" value={spread?`${spread} h`:'—'} detail="Range across visible submissions"/><Stat label="EARTH-IMPACTING Bz" value="Uncertain" detail="Arrival forecasts do not determine Bz" tone="amber-text"/></div><Ensemble forecasts={forecasts} asOf={replayTime}/><Source name="NASA CCMC · CME Scoreboard" url="https://ccmc.gsfc.nasa.gov/scoreboards/cme/earth/"/><details className="details"><summary>Inspect original submissions and revisions</summary><div className="table-scroll"><table><thead><tr><th>Method</th><th>Submitted UTC</th><th>Arrival estimate UTC</th></tr></thead><tbody>{forecasts.map(f=><tr key={f.id}><td>{f.method}</td><td>{formatUtc(f.issuedAtUtc)}</td><td>{formatUtc(f.predictedArrivalUtc)}</td></tr>)}</tbody></table></div><p className="fine">Submission time is used as an availability proxy. Later 2025 aggregate rows are excluded. Independent page vintages have not been verified.</p></details></>:<><div className="stat-row"><Stat label="IMF Bz · GSM" value={latestMag?.bzNt!==null&&latestMag?.bzNt!==undefined?`${latestMag.bzNt.toFixed(1)} nT`:'—'} detail={latestMag?formatUtc(latestMag.observedAtUtc):'Measurement unavailable'}/><Stat label="SOLAR-WIND SPEED" value={latestPlasma?.speedKmS?`${latestPlasma.speedKmS.toFixed(0)} km/s`:'—'} detail={latestPlasma?formatUtc(latestPlasma.observedAtUtc):'Measurement unavailable'}/><Stat label="MAGNETIC FEED" value={dataFreshness(latestMag?.observedAtUtc,time,15).toUpperCase()} detail="15-minute freshness threshold"/></div><Chart points={(wind?.samples??[]).map(s=>({time:s.observedAtUtc,value:s.bzNt}))} label="NOAA upstream IMF Bz in GSM coordinates" color="var(--violet)"/><Source name="NOAA SWPC · active RTSW product" url="https://services.swpc.noaa.gov/json/rtsw/" time={wind?.retrievedAtUtc}/><div className="notice">Near-Earth measurements condition short-term geoeffectiveness. They do not provide a multi-day CME arrival forecast.</div><button className="secondary-button" onClick={()=>switchMode('replay')}>Explore the verified May 2024 arrival ensemble <Icon name="arrow" size={16}/></button></>}
           </section>
           <section className="panel context-card"><div className="context-icon"><Icon name="sensor" size={28}/></div><div><div className="tiny-label">NEXT LINK IN THE EVIDENCE</div><h3>What happened on the ground?</h3><p>Compare this event with actual USGS Boulder measurements.</p></div><button className="circle-button" aria-label="Open Ground Truth" onClick={()=>setTab('ground')}><Icon name="arrow"/></button></section>
@@ -326,6 +329,61 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
         {tab==='map'&&<section className="panel map-panel"><div className="panel-heading"><div><div className="eyebrow">02 / AURORA MAP</div><h2>Activity is a clue. Visibility is local.</h2></div><Badge tone="violet">MODEL FORECAST</Badge></div><div className="map-toolbar"><div className="segmented compact"><button className={hemisphere==='north'?'selected':''} onClick={()=>setHemisphere('north')}>Northern</button><button className={hemisphere==='south'?'selected':''} onClick={()=>setHemisphere('south')}>Southern</button></div><label className="checkbox"><input type="checkbox" checked={night} onChange={e=>setNight(e.target.checked)}/>Twilight shading</label></div><PolarMap ovation={ovation} time={time} hemisphere={hemisphere} night={night} selectedLocation={chosen}/><div className="map-legend"><span>Lower activity</span><div/><span>Higher activity</span></div><p className="fine centered">NOAA modeled auroral activity · geographic polar graticule · no local visibility probability</p>{ovation?<><Source name="NOAA OVATION · model valid time" url={ovation.sourceUrl} time={ovation.validAtUtc}/><p className="fine">Input observed {formatUtc(ovation.observedAtUtc)} · {dataFreshness(ovation.observedAtUtc,time).toUpperCase()} · forecast horizon supplied by NOAA only.</p></>:<p className="notice">The historical model layer is unavailable. Current NOAA data is never relabeled as a May 2024 forecast.</p>}<div className="layer-list"><div><span className="layer-dot violet"/><span>Modeled auroral activity</span><Badge>{ovation?'NOAA SNAPSHOT':'UNAVAILABLE'}</Badge></div><div><span className="layer-dot mint"/><span>Ground magnetic evidence</span><Badge>{mode==='replay'?'BOU REFERENCE':'NO LIVE STATION'}</Badge></div><div><span className="layer-dot amber"/><span>Independently confirmed sightings</span><Badge>NONE LOADED</Badge></div></div><div className="location-card"><label className="tiny-label" htmlFor="region">COARSE VIEWING REGION</label><select id="region" value={location} onChange={e=>setLocation(Number(e.target.value))}>{LOCATIONS.map((l,i)=><option key={l.name} value={i}>{l.name}</option>)}</select><div className="stat-row"><Stat label="LOCAL LIGHT" value={darkness(elevation)} detail={`Solar elevation ≈ ${elevation.toFixed(0)}° · calculated`}/><Stat label="CLOUD COVER" value="Unknown" detail="No weather source connected"/></div><p className="fine">Approximate geometric Sun position; no cloud, terrain or refraction correction. Geographic location only; validated magnetic coordinates are not yet available. No precise location is requested.</p></div></section>}
 
         {tab==='ground'&&<>
+          <section className="panel" style={{borderColor:'#1b426b'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'8px',marginBottom:'10px'}}>
+              <div>
+                <div className="eyebrow" style={{color:'var(--mint)'}}>CITIZEN SCIENCE WORKFLOW · 7 SEQUENTIAL STEPS</div>
+                <h3 style={{margin:'2px 0 0 0',fontSize:'16px'}}>From Local Field Discovery to Multi-Station Space Weather Verification</h3>
+              </div>
+              <Badge tone="mint">STEP {journeyStep} OF 7</Badge>
+            </div>
+            <div style={{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'6px',marginBottom:'10px'}}>
+              {[
+                {id:1,label:'1. Forcefield & Watch',icon:'🧲'},
+                {id:2,label:'2. Quiet-Spot Radar',icon:'🎯'},
+                {id:3,label:'3. Solar 3D & 1859',icon:'☀️'},
+                {id:4,label:'4. 30s Scan & AI QC',icon:'⚡'},
+                {id:5,label:'5. NOAA / NASA',icon:'🛰️'},
+                {id:6,label:'6. Phone Network',icon:'🌐'},
+                {id:7,label:'7. Aurora Alerts',icon:'🔔'},
+              ].map(s=>(
+                <button
+                  key={s.id}
+                  onClick={()=>setJourneyStep(s.id)}
+                  style={{
+                    padding:'7px 11px',
+                    borderRadius:'999px',
+                    border:`1px solid ${journeyStep===s.id?'#68edc3':'#1c3754'}`,
+                    background:journeyStep===s.id?'#11334d':'#071525',
+                    color:journeyStep===s.id?'#eff7ff':'#8ea8c4',
+                    fontSize:'11.5px',
+                    fontWeight:journeyStep===s.id?800:600,
+                    cursor:'pointer',
+                    whiteSpace:'nowrap',
+                  }}
+                >
+                  {s.icon} {s.label}
+                </button>
+              ))}
+            </div>
+            {journeyStep===3 && <SolarMagnetosphere3DCanvas initialScenario="CARRINGTON_1859" />}
+            <div style={{background:'#061322',borderRadius:'10px',padding:'10px 12px',borderLeft:'3px solid #68edc3',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'10px'}}>
+              <span style={{fontSize:'12px',color:'#dbe8f5',flex:1,minWidth:'220px'}}>
+                {([
+                  'Step 1 — 3D Forcefield & AI Object Fingerprinting: Wave your hand or hold a smartwatch/charger near the phone. Watch the 3D field lines warp and AI recognize the object signature!',
+                  'Step 2 — Quiet-Spot Purity Radar: Gamified 0–100% purity detector spots nearby humans, magnetized metal, or AC wires to lock onto a clean <100 nT windowsill.',
+                  'Step 3 — Solar Wind 3D & 1859 Carrington Superstorm: AI estimates Earth-field likelihood while the interactive 3D simulator shows CME bow-shock compression and the 1859 Carrington storm that set telegraph stations on fire.',
+                  'Step 4 — Fast 30s Scan (or 10m Pro) & AI Quality Verdict: Choose a 30s Quick Scan, 2m Standard, or 10m Pro session; Green/Yellow/Orange bars and Meta Muse Spark 1.3 evaluate data usability.',
+                  'Step 5 — Compare with NOAA / NASA & Infrastructure Dials: Compare phone Δ|B| against NOAA DSCOVR solar wind (Speed, Density, Bz), Kp storm curves, 4 Human Impact Dials, and USGS Boulder.',
+                  'Step 6 — Multi-Phone Citizen Network: Compare incoming citizen phone recordings across the regional network alongside reference observatories and Muse Wonder red-team checks.',
+                  'Step 7 — Per-Phone Aurora Storm Alerts: Subscribe your phone’s latitude zone to receive automatic alerts when southward IMF Bz and ground magnetic surges indicate local aurora potential.',
+                ])[journeyStep-1]}
+              </span>
+              {journeyStep===1 && <button className="secondary-button" onClick={()=>setDrawer('why')} style={{padding:'6px 12px',fontSize:'11.5px'}}>Open 5-Step Science Story</button>}
+              {journeyStep===2 && <button className="secondary-button" onClick={()=>setDrawer('capture')} style={{padding:'6px 12px',fontSize:'11.5px'}}>Open Spot Finder Simulator</button>}
+              {journeyStep===6 && <button className="secondary-button" onClick={runAgent} style={{padding:'6px 12px',fontSize:'11.5px'}}>Run Coordinator Policy Demo</button>}
+            </div>
+          </section>
           <section className="panel"><div className="panel-heading"><div><div className="eyebrow">03 / GROUND TRUTH</div><h2>A reading is the start of a question.</h2></div><Badge tone={session?.kind==='SYNTHETIC'?'violet':'mint'}>{session?(session.kind==='SYNTHETIC'?'SYNTHETIC PHONE SIMULATION':'PHONE EXPORT · UNVERIFIED'):'PHONE NOT CONNECTED'}</Badge></div>
             {!session?<div className="sensor-empty"><div className="sensor-glyph"><Icon name="sensor" size={44}/></div><h3>Start with a real measurement.</h3><p>The Expo collector records three-axis magnetic field while your phone stays still. Export a session and inspect its quality here.</p><button className="primary-button" onClick={()=>setDrawer('capture')}>Prepare a 10-minute observation <Icon name="arrow" size={17}/></button><small>Explicit consent · foreground only · local export</small></div>:<><div className="notice">This imported file describes a {session.kind==='SYNTHETIC'?'synthetic test':'recorded phone'} session at {formatUtc(session.startedAtUtc)}. It is not synchronized with the historical storm. File declarations do not verify physical hardware provenance.</div><div className="stat-row">{(['x','y','z'] as const).map(axis=><Stat key={axis} label={`${axis.toUpperCase()} · DEVICE FRAME`} value={`${session.samples.at(-1)?.[axis].toFixed(2)??'—'} µT`} detail="Last imported sample"/>)}</div><Chart points={(qc?.sampleResults??[]).map((s,i)=>({time:s.observedAtUtc??session.samples[i].receivedAtUtc,value:s.deltaNt}))} label="Imported phone scalar magnetic perturbation; raw deviations include flagged artifacts" color="var(--violet)" maxGapMs={500}/><p className="fine">Δ|B| from the first 120-second median baseline · raw scalar deviations shown; flagged samples are excluded from usable statistics below.</p><div className={`notice ${qc?.flags.includes('LOCAL_INTERFERENCE')?'warning':''}`}><strong>{qc?.flags.includes('LOCAL_INTERFERENCE')?'Possible local interference — not regional confirmation':qc?.accepted?'Locally usable samples; regional evidence remains inconclusive':'Quality checks need attention'}</strong><p>{qc?.flags.join(' · ')||'No local screening flags'} · {qc?.algorithmVersion}</p></div><div className="stat-row"><Stat label="SCALAR |B|" value={qc?.sampleResults.at(-1)?.magnitudeMicroT!==null&&qc?.sampleResults.at(-1)?.magnitudeMicroT!==undefined?`${qc.sampleResults.at(-1)!.magnitudeMicroT!.toFixed(2)} µT`:'—'} detail="Magnitude · last imported sample"/><Stat label="ACTUAL CADENCE" value={qc?.actualHz?`${qc.actualHz.toFixed(1)} Hz`:'—'} detail={`${qc?.sampleCount} samples · ${qc?.usableCount} usable`}/><Stat label="BASELINE NOISE · MAD" value={qc?.noiseMadNt!==null&&qc?.noiseMadNt!==undefined?`${qc.noiseMadNt.toFixed(1)} nT`:'Pending'} detail="Engineering QC; uncalibrated sensitivity"/></div>            <div className="highwater">{qc?.highWater.map(h=><div key={h.requestedHours}><span>{h.requestedHours} h high-water</span><strong>{h.maximumAbsoluteDeltaNt===null?'—':`${h.maximumAbsoluteDeltaNt.toFixed(1)} nT`}</strong><small>{(h.observedCoverageSeconds/60).toFixed(1)} min usable coverage · {h.completeWindow?'complete':'partial'}</small></div>)}</div>
 
@@ -511,9 +569,11 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                         <div style={{fontSize:'13px',fontWeight:'800',color:'#ffd58c'}}>{networkAggregate.averageNoiseMadNt.toFixed(1)} nT</div>
                       </div>
                       <div style={{background:'#05101a',padding:'6px',borderRadius:'6px'}}>
-                        <div style={{fontSize:'8.5px',color:'#7e9cb8',fontWeight:'bold'}}>BOULDER COHERENCE</div>
-                        <div style={{fontSize:'13px',fontWeight:'800',color:'#00e5ff'}}>
-                          {(networkAggregate.regionalCoherence.coherenceScore * 100).toFixed(0)}%
+                        <div style={{fontSize:'8.5px',color:'#7e9cb8',fontWeight:'bold'}}>REGIONAL VERDICT</div>
+                        <div style={{fontSize:'11.5px',fontWeight:'800',color:'#ffd58c'}}>
+                          {networkAggregate.regionalCoherence.coherenceScore !== null
+                            ? `${(networkAggregate.regionalCoherence.coherenceScore * 100).toFixed(0)}% Coherent`
+                            : 'INCONCLUSIVE (<3 sites)'}
                         </div>
                       </div>
                     </div>
@@ -523,24 +583,31 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                 {/* Section 5: Meta AI Multi-Model Intelligence Suite */}
                 {metaSparkInsight && metaWonderCritique && metaAuroraAlert && (
                   <div style={{marginTop:'14px',display:'flex',flexDirection:'column',gap:'12px'}}>
-                    <div style={{color:'#b9a5ff',fontSize:'10px',fontWeight:'800',letterSpacing:'1.2px',display:'flex',alignItems:'center',gap:'6px'}}>
-                      <span>🤖 META AI MULTI-MODEL INTELLIGENCE SUITE</span>
-                      <span style={{fontSize:'9px',color:'#7e9cb8',fontWeight:'600'}}>(Muse Spark 1.3 · Muse Wonder · SAM 3.1)</span>
+                    <div style={{color:'#b9a5ff',fontSize:'10px',fontWeight:'800',letterSpacing:'1.2px',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'6px'}}>
+                      <span>🤖 META AI MULTI-MODEL ARCHITECTURE (Muse Spark 1.3 · Muse Wonder · Muse Image · SAM 3.1)</span>
+                      <span style={{fontSize:'9.5px',color:'#ffd58c',fontWeight:'700',background:'#1b1408',padding:'2px 8px',borderRadius:'6px',border:'1px solid #594316'}}>
+                        {metaSparkInsight.executionMode} · modelCalled: {String(metaSparkInsight.modelCalled)}
+                      </span>
                     </div>
 
                     {/* Meta Muse Spark 1.3 Card */}
                     <div style={{background:'#081a2e',borderRadius:'10px',padding:'12px',border:'1px solid #1c426b'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px',flexWrap:'wrap',gap:'6px'}}>
                         <span style={{fontSize:'11.5px',fontWeight:'800',color:'#00e5ff'}}>🧠 Meta Muse Spark 1.3 · Scientific Observation Coordinator</span>
-                        <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:'#00e5ff20',color:'#00e5ff',border:'1px solid #00e5ff'}}>
-                          {metaSparkInsight.scientificVerdict}
-                        </span>
+                        <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+                          <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:'#ffd58c20',color:'#ffd58c',border:'1px solid #ffd58c'}}>
+                            REGIONAL: {metaSparkInsight.regionalVerdict}
+                          </span>
+                          <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:'#00e5ff20',color:'#00e5ff',border:'1px solid #00e5ff'}}>
+                            LOCAL: {metaSparkInsight.scientificVerdict}
+                          </span>
+                        </div>
                       </div>
                       <p style={{fontSize:'11.5px',color:'#eff7ff',lineHeight:'1.5',margin:'0 0 8px 0'}}>
                         {metaSparkInsight.narrative}
                       </p>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',gap:'6px',fontSize:'10.5px',background:'#040d1a',padding:'8px',borderRadius:'6px',color:'#c3d9ed'}}>
-                        <div>• Rate of Change: <strong style={{color:'#20c997'}}>0.076 µT/s (Slow Space Weather)</strong></div>
+                        <div>• Rate of Change: <strong style={{color:'#20c997'}}>0.076 µT/s (Slow Drift / ULF)</strong></div>
                         <div>• Frequency Regime: <strong style={{color:'#00e5ff'}}>Pc5 Pulsations (1.6–7 mHz)</strong></div>
                         <div>• Noise Floor MAD: <strong style={{color:'#ffd58c'}}>62.0 nT (Sensor Thermal Limit)</strong></div>
                       </div>
@@ -549,7 +616,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                     {/* Meta Muse Wonder Red-Team Card */}
                     <div style={{background:'#161124',borderRadius:'10px',padding:'12px',border:'1px solid #362554'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px',flexWrap:'wrap',gap:'6px'}}>
-                        <span style={{fontSize:'11.5px',fontWeight:'800',color:'#b9a5ff'}}>⚖️ Meta Muse Wonder · Adversarial Red-Team & Invariant Checker</span>
+                        <span style={{fontSize:'11.5px',fontWeight:'800',color:'#b9a5ff'}}>⚖️ Meta Muse Wonder · Adversarial Red-Team &amp; Invariant Gate</span>
                         <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:'#ffd58c20',color:'#ffd58c',border:'1px solid #ffd58c'}}>
                           {metaWonderCritique.critiqueStatus}
                         </span>
@@ -562,7 +629,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                           ))}
                         </ul>
                         <div style={{background:'#0c0816',padding:'6px 10px',borderRadius:'6px',marginTop:'4px',borderLeft:'3px solid #b9a5ff'}}>
-                          <strong style={{color:'#b9a5ff'}}>Qualified Scientific Adjustment: </strong>
+                          <strong style={{color:'#b9a5ff'}}>Authoritative Validator Gate: </strong>
                           <span>{metaWonderCritique.verdictAdjustment}</span>
                         </div>
                       </div>
@@ -571,7 +638,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                     {/* Proactive Aurora Alert & SAM 3.1 Card */}
                     <div style={{background:'#1c0e1e',borderRadius:'10px',padding:'12px',border:`1px solid ${metaAuroraAlert.alertColor}`}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px',flexWrap:'wrap',gap:'6px'}}>
-                        <span style={{fontSize:'11.5px',fontWeight:'800',color:metaAuroraAlert.alertColor}}>🌟 Proactive Aurora Alert & Viewing Guidance</span>
+                        <span style={{fontSize:'11.5px',fontWeight:'800',color:metaAuroraAlert.alertColor}}>🌟 Proactive Aurora Alert Scenario &amp; Viewing Guidance</span>
                         <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:`${metaAuroraAlert.alertColor}25`,color:metaAuroraAlert.alertColor,border:`1px solid ${metaAuroraAlert.alertColor}`}}>
                           {metaAuroraAlert.alertLevel}
                         </span>
@@ -582,13 +649,16 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',gap:'6px',fontSize:'10.5px',background:'#09040b',padding:'8px',borderRadius:'6px',marginBottom:'8px'}}>
                         <div>• Optimal Window: <strong style={{color:'#eff7ff'}}>{metaAuroraAlert.optimalViewingWindow}</strong></div>
                         <div>• Look Direction: <strong style={{color:'#eff7ff'}}>{metaAuroraAlert.viewingDirection}</strong></div>
-                        <div>• Visibility Likelihood: <strong style={{color:metaAuroraAlert.alertColor}}>{metaAuroraAlert.visibilityLikelihood}</strong></div>
+                        <div>• Optical Claim: <strong style={{color:'#ffd58c'}}>Not Established (0 sightings)</strong></div>
                       </div>
 
                       {/* Meta SAM 3.1 Optical Segmentation */}
                       <div style={{background:'#0f0812',borderRadius:'6px',padding:'8px',border:'1px solid #36173b'}}>
                         <div style={{fontSize:'10px',fontWeight:'800',color:'#b9a5ff',marginBottom:'3px'}}>
-                          🔭 META SAM 3.1 · OPTICAL SKY SEGMENTATION BENCHMARK
+                          🔭 META SAM 3.1 · OPTICAL SKY SEGMENTATION SCHEMA ({metaSamResult.executionMode})
+                        </div>
+                        <div style={{fontSize:'10px',color:'#9cbddc',marginBottom:'4px'}}>
+                          {metaSamResult.provenanceNote}
                         </div>
                         <div style={{fontSize:'10.5px',color:'#cfa5d8',display:'flex',flexWrap:'wrap',gap:'10px'}}>
                           {metaSamResult.masks.map((m, i) => (

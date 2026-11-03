@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import {
   evaluateAuroraAlertDecision,
   evaluateSamOpticalSegmentation,
-  evaluateSparkMeasurementInsight,
   evaluateWonderRedTeam,
   MUSE_IMAGE_CONCEPTS,
   META_MODELS,
   runDemoCoordinator,
+  runLiveMetaSparkInsight,
 } from '@aurorasense/coordinator';
 
 export const runtime = 'nodejs';
@@ -20,28 +20,31 @@ export async function GET() {
     status: 'ACTIVE',
     provider: 'Meta AI / Meta Model API',
     apiKeyConfigured: isConfigured,
+    executionNote: isConfigured
+      ? 'Server-side META_MODEL_API_KEY present; live Muse Spark 1.3 Responses endpoint enabled with deterministic fallback.'
+      : 'No META_MODEL_API_KEY configured; deterministic local evaluators and scripted policy demo active (modelCalled: false).',
     models: {
       sparkCoordinator: {
         modelId: META_MODELS.SPARK,
         role: 'Primary Agentic Scientific Observation Coordinator & Insight Generator',
         toolCalling: 'Meta Model API Responses (Strict Function Calling)',
-        status: 'OPERATIONAL',
+        status: isConfigured ? 'LIVE_CONFIGURED' : 'LOCAL_DETERMINISTIC_FALLBACK',
       },
       wonderRedTeam: {
         modelId: META_MODELS.WONDER,
         role: 'Scientific Adversary & Skeptical Invariant Checker',
-        status: 'OPERATIONAL',
+        status: 'LOCAL_DETERMINISTIC_EVALUATOR',
       },
       museImage: {
         modelId: META_MODELS.IMAGE,
         role: 'Conceptual Educational Illustration & Reconnection Architecture',
-        status: 'OPERATIONAL',
+        status: 'CONCEPTUAL_SPECIFICATION',
         stagesAvailable: [1, 2, 3, 4, 5],
       },
       samSegmentation: {
         modelId: META_MODELS.SAM,
-        role: 'Segment Anything Model (SAM 3.1) Optical Aurora & Cloud Segmentation',
-        status: 'OPERATIONAL',
+        role: 'Segment Anything Model (SAM 3.1) Optical Aurora & Cloud Segmentation Schema',
+        status: 'CONCEPTUAL_SPECIFICATION_DEMO',
       },
     },
     educationalConcepts: MUSE_IMAGE_CONCEPTS,
@@ -56,7 +59,7 @@ export async function POST(request: Request) {
 
     switch (action) {
       case 'spark_insight': {
-        const insight = evaluateSparkMeasurementInsight(body.payload, metaKey);
+        const insight = await runLiveMetaSparkInsight(body.payload, metaKey);
         return NextResponse.json({ success: true, insight });
       }
 

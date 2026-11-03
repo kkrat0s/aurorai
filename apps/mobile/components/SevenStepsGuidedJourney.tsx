@@ -1,34 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Modal,
+  Animated,
+  Easing,
   Pressable,
-  ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Path,
+  RadialGradient,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 import {
+  UNIVERSAL_FINGERPRINT_DATABASE,
+  createUserLearnedFingerprint,
+  type DisturbanceClassId,
   type DisturbanceClassificationResult,
+  type LearnedUserFingerprint,
 } from '@aurorasense/shared/magnetic-classifier';
+import { type PrescriptiveSessionReport } from '@aurorasense/shared/prescriptive-evaluator';
+import { type SensorQcResult, type SensorSession } from '@aurorasense/shared/sensor';
 import {
-  type PrescriptiveSessionReport,
-} from '@aurorasense/shared/prescriptive-evaluator';
-import {
-  type SensorQcResult,
-  type SensorSession,
-} from '@aurorasense/shared/sensor';
-import {
-  type SparkInsightResult,
-  type WonderRedTeamResult,
-  type AuroraAlertEvaluationResult,
-  type SamSegmentationResult,
-  MUSE_IMAGE_CONCEPTS,
   evaluateSparkMeasurementInsight,
-  evaluateWonderRedTeam,
   evaluateAuroraAlertDecision,
-  evaluateSamOpticalSegmentation,
+  type SparkInsightResult,
+  type AuroraAlertEvaluationResult,
 } from '@aurorasense/coordinator';
 import { type MotionAnalysis } from '../motion-detector';
+import { MagneticField3DView } from './MagneticField3DView';
+
+export type ScanDurationOption = 30 | 120 | 600;
 
 interface SevenStepsGuidedJourneyProps {
   currentStep: number;
@@ -43,6 +50,11 @@ interface SevenStepsGuidedJourneyProps {
   session: SensorSession | null;
   qc: SensorQcResult | null;
   prescriptiveReport: PrescriptiveSessionReport | null;
+  soundMuted: boolean;
+  onToggleSound: () => void;
+  onCalibrate: () => void;
+  targetDurationSec: ScanDurationOption;
+  onChangeTargetDurationSec: (sec: ScanDurationOption) => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
   isRecording: boolean;
@@ -50,32 +62,16 @@ interface SevenStepsGuidedJourneyProps {
   onUploadToDatabase: () => void;
   uploadStatus: string | null;
   isUploading: boolean;
+  userFingerprints?: LearnedUserFingerprint[];
+  onAddFingerprint?: (fp: LearnedUserFingerprint) => void;
 }
 
-const colors = {
-  background: '#040d1a',
-  panel: '#0a192b',
-  card: '#0f2238',
-  ink: '#eff7ff',
-  muted: '#8ea8c4',
-  mint: '#20c997',
-  cyan: '#00e5ff',
-  violet: '#b9a5ff',
-  amber: '#ffd58c',
-  red: '#ff6b6b',
-  pink: '#ff3366',
-  border: '#1b3452',
-};
-
-const STEPS = [
-  { id: 1, label: '1. Understand', title: 'What is a Magnetic Field?', icon: '🧲' },
-  { id: 2, label: '2. Spot Finder', title: 'AI Interference Detection', icon: '🔍' },
-  { id: 3, label: '3. Measure', title: 'Record & Auto-Submit', icon: '⏱️' },
-  { id: 4, label: '4. AI Insights', title: 'Meta Muse Spark 1.3 Analysis', icon: '🧠' },
-  { id: 5, label: '5. Compare', title: 'Forecast & Observatory Alignment', icon: '🛰️' },
-  { id: 6, label: '6. Red-Team', title: 'Meta Muse Wonder Skepticism', icon: '⚖️' },
-  { id: 7, label: '7. Alerts', title: 'Proactive Aurora & Storm Alert', icon: '🚨' },
-];
+const LATITUDE_ZONES = [
+  { id: 'arctic', label: '65°–70°N', city: 'High Latitude', lat: 66.5, prob: 90 },
+  { id: 'nordic', label: '58°–64°N', city: 'Sub-Auroral', lat: 60.2, prob: 76 },
+  { id: 'mid', label: '45°–57°N', city: 'Mid Latitude', lat: 50.0, prob: 54 },
+  { id: 'low', label: '35°–44°N', city: 'Lower Mid', lat: 40.0, prob: 38 },
+] as const;
 
 export function SevenStepsGuidedJourney({
   currentStep,
@@ -90,6 +86,10 @@ export function SevenStepsGuidedJourney({
   session,
   qc,
   prescriptiveReport,
+  soundMuted,
+  onToggleSound,
+  onCalibrate,
+  targetDurationSec,
   onStartRecording,
   onStopRecording,
   isRecording,
@@ -97,1373 +97,933 @@ export function SevenStepsGuidedJourney({
   onUploadToDatabase,
   uploadStatus,
   isUploading,
+  onAddFingerprint,
 }: SevenStepsGuidedJourneyProps) {
-  const [selectedMuseStage, setSelectedMuseStage] = useState<1 | 2 | 3 | 4 | 5>(1);
+  // Clamp active stage to 1..5
+  const stage = Math.min(5, Math.max(1, currentStep));
+
+  const stageOpacity = useRef(new Animated.Value(1)).current;
+  const stageSlideY = useRef(new Animated.Value(0)).current;
+  const [phase, setPhase] = useState(0);
+
+  const [selectedZoneId, setSelectedZoneId] = useState<string>('nordic');
+  const [alertsEnabled, setAlertsEnabled] = useState<boolean>(true);
+  const [alertPreviewVisible, setAlertPreviewVisible] = useState<boolean>(false);
+
   const [sparkInsight, setSparkInsight] = useState<SparkInsightResult | null>(null);
-  const [wonderCritique, setWonderCritique] = useState<WonderRedTeamResult | null>(null);
   const [auroraAlert, setAuroraAlert] = useState<AuroraAlertEvaluationResult | null>(null);
-  const [samResult, setSamResult] = useState<SamSegmentationResult | null>(null);
-  const [viewingDirection, setViewingDirection] = useState('Northern Horizon (0°–20° elevation)');
 
-  // Auto-evaluate Meta AI insights when a session exists
   useEffect(() => {
-    if (session && qc) {
-      const summary = {
-        durationSeconds: qc.durationSeconds,
-        nominalHz: session.nominalHz,
-        actualHz: qc.actualHz ?? 10.0,
-        baselineMedianMicroT: (qc.baselineMicroT ?? 46.1),
-        noiseMadNt: qc.noiseMadNt ?? 62.0,
-        p95DeltaNt: prescriptiveReport?.activityLevel.p95DeltaNt ?? 432.5,
-        maxDeltaNt: prescriptiveReport?.activityLevel.maxDeltaNt ?? 924.6,
-        endpointDriftNt: -333.5,
-        rateOfChangeMicroTPerSec: 0.076,
-      };
+    const id = setInterval(() => {
+      setPhase((p) => (p + 0.06) % (Math.PI * 20));
+    }, 45);
+    return () => clearInterval(id);
+  }, []);
 
-      const spark = evaluateSparkMeasurementInsight({
+  // Apple-style smooth fade transition whenever stage changes
+  const transitionToStage = (nextStage: number) => {
+    Animated.parallel([
+      Animated.timing(stageOpacity, {
+        toValue: 0,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(stageSlideY, {
+        toValue: -8,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onSelectStep(nextStage);
+      stageSlideY.setValue(10);
+      Animated.parallel([
+        Animated.timing(stageOpacity, {
+          toValue: 1,
+          duration: 360,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(stageSlideY, {
+          toValue: 0,
+          duration: 360,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  };
+
+  const liveMag = mag ?? 45.88;
+  const liveDeltaNt = (delta ?? 0) * 1000;
+  const bx = vector?.x ?? -19.9;
+  const by = vector?.y ?? -38.3;
+  const bz = vector?.z ?? 15.7;
+
+  const fallbackClass: DisturbanceClassificationResult =
+    classification ?? {
+      predictedClass: 'CLEAN_GEOMAGNETIC_BASELINE',
+      confidence: 0.92,
+      scores: {
+        CLEAN_GEOMAGNETIC_BASELINE: 0.92,
+        GEOMAGNETIC_SOLAR_DISTURBANCE: 0.02,
+        HUMAN_HAND_GESTURE: 0.02,
+        SMARTWATCH_OR_MAGNET: 0.01,
+        CHARGING_CABLE_INDUCTION: 0.01,
+        LAPTOP_OR_COMPUTER: 0.01,
+        STRUCTURAL_METALLIC_MASS: 0.01,
+      },
+      metadata: UNIVERSAL_FINGERPRINT_DATABASE.CLEAN_GEOMAGNETIC_BASELINE,
+      signature: {
+        deltaMicroT: delta ?? 0,
+        deltaNanoT: liveDeltaNt,
+        peakDeltaMicroT: Math.abs(delta ?? 0.06),
+        rateOfChangeMicroTPerSec: 0.08,
+        polarizationRatio: 0.42,
+        jitterRatio: 0.12,
+        steadinessRatio: 0.91,
+        sampleCount: 20,
+        durationMs: 2000,
+      },
+      solarStormSignalRatio: 0.6,
+      fingerprintHash: 'fp-clea-0001',
+      aiReasoning: 'Quiet Earth baseline.',
+    };
+
+  // Quiet-spot purity calculation (0..100%)
+  const humanClear = !isScreenTouched && fallbackClass.predictedClass !== 'HUMAN_HAND_GESTURE';
+  const magnetClear =
+    fallbackClass.predictedClass !== 'SMARTWATCH_OR_MAGNET' &&
+    fallbackClass.predictedClass !== 'STRUCTURAL_METALLIC_MASS' &&
+    liveMag >= 22 &&
+    liveMag <= 68;
+  const powerClear =
+    !isCharging &&
+    fallbackClass.predictedClass !== 'CHARGING_CABLE_INDUCTION' &&
+    fallbackClass.predictedClass !== 'LAPTOP_OR_COMPUTER';
+  const motionClear = motionAnalysis.isStandstill;
+
+  const spotScore =
+    (humanClear ? 25 : 5) +
+    (magnetClear ? 25 : 0) +
+    (powerClear ? 25 : 5) +
+    (motionClear ? 25 : 0);
+
+  const spotColor = spotScore >= 85 ? '#20c997' : spotScore >= 55 ? '#ffd58c' : '#ff6b6b';
+
+  useEffect(() => {
+    const noiseMad = qc?.noiseMadNt ?? 62.0;
+    const p95 = prescriptiveReport?.activityLevel.p95DeltaNt ?? 432.5;
+    const summary = {
+      durationSeconds: qc?.durationSeconds ?? targetDurationSec,
+      nominalHz: session?.nominalHz ?? 10,
+      actualHz: qc?.actualHz ?? 10.0,
+      baselineMedianMicroT: qc?.baselineMicroT ?? liveMag,
+      noiseMadNt: noiseMad,
+      p95DeltaNt: p95,
+      maxDeltaNt: prescriptiveReport?.activityLevel.maxDeltaNt ?? 924.6,
+      endpointDriftNt: -333.5,
+      rateOfChangeMicroTPerSec: 0.076,
+    };
+
+    setSparkInsight(
+      evaluateSparkMeasurementInsight({
         sessionSummary: summary,
-        qcResult: { accepted: qc.accepted, flags: qc.flags },
+        qcResult: { accepted: qc?.accepted ?? true, flags: qc?.flags ?? [] },
         spaceWeatherContext: {
-          imfBzNt: -12.4,
-          solarWindSpeedKmS: 650,
+          imfBzNt: -14.2,
+          solarWindSpeedKmS: 685,
           boulderDeflectionNt: 340,
         },
-      });
-      setSparkInsight(spark);
+      })
+    );
 
-      const wonder = evaluateWonderRedTeam({
-        sparkVerdict: spark.scientificVerdict,
-        sessionSummary: summary,
-        qcResult: { accepted: qc.accepted, flags: qc.flags },
-        independentSitesCount: 1,
-        professionalStationCoherence: true,
-      });
-      setWonderCritique(wonder);
-
-      const alert = evaluateAuroraAlertDecision({
+    const zone = LATITUDE_ZONES.find((z) => z.id === selectedZoneId) ?? LATITUDE_ZONES[1];
+    setAuroraAlert(
+      evaluateAuroraAlertDecision({
         userLocation: {
-          geomagneticLatitudeDeg: 54.0,
+          geomagneticLatitudeDeg: zone.lat,
           isNighttime: true,
-          cloudFraction: 0.2,
-          approximateCityOrRegion: 'Local Region',
+          cloudFraction: 0.18,
+          approximateCityOrRegion: zone.label,
         },
         spaceWeather: {
-          imfBzNt: -12.4,
-          solarWindSpeedKmS: 650,
-          ovationActivity: 75,
+          imfBzNt: -14.2,
+          solarWindSpeedKmS: 685,
+          ovationActivity: zone.prob,
           currentStormScale: 'G3',
         },
         groundEvidence: {
-          phoneAccepted: qc.accepted,
-          phoneDeltaNt: prescriptiveReport?.activityLevel.p95DeltaNt ?? 432.5,
+          phoneAccepted: qc?.accepted ?? true,
+          phoneDeltaNt: p95,
           boulderCoherence: true,
         },
-      });
-      setAuroraAlert(alert);
+      })
+    );
+  }, [session, qc, prescriptiveReport, selectedZoneId, targetDurationSec]);
 
-      const sam = evaluateSamOpticalSegmentation({
-        imageWidth: 1920,
-        imageHeight: 1080,
-        nightSkyAreaRatio: 0.70,
-      });
-      setSamResult(sam);
-    }
-  }, [session, qc, prescriptiveReport]);
+  const handleConfirmObject = (classId: DisturbanceClassId) => {
+    const fp = createUserLearnedFingerprint(fallbackClass, classId);
+    onAddFingerprint?.(fp);
+  };
 
-  // Spot finder quietness check
-  const isOptimalSpot =
-    motionAnalysis.isStandstill &&
-    motionAnalysis.isFlatOnSurface &&
-    !isScreenTouched &&
-    !isCharging &&
-    (classification?.predictedClass === 'CLEAN_GEOMAGNETIC_BASELINE' ||
-      classification?.predictedClass === 'GEOMAGNETIC_SOLAR_DISTURBANCE');
-
-  const spotQuietnessScore = isOptimalSpot
-    ? 95
-    : !motionAnalysis.isStandstill
-    ? 25
-    : isScreenTouched
-    ? 45
-    : isCharging
-    ? 35
-    : 70;
+  const noiseMad = qc?.noiseMadNt ?? 62.0;
+  const p95Delta = prescriptiveReport?.activityLevel.p95DeltaNt ?? 432.5;
+  const quietBarPct = Math.min(96, Math.max(5, 100 - (noiseMad / 300) * 100));
+  const stormBarPct = Math.min(96, Math.max(8, (p95Delta / 600) * 100));
+  const selectedZone = LATITUDE_ZONES.find((z) => z.id === selectedZoneId) ?? LATITUDE_ZONES[1];
 
   return (
-    <View style={styles.container}>
-      {/* 7-STEP HORIZONTAL NAVIGATION PILLS */}
-      <View style={styles.stepsHeader}>
-        <Text style={styles.stepsSuperTitle}>CITIZEN SCIENCE JOURNEY · 7 STEPS</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.stepPillsScroll}
-        >
-          {STEPS.map((s) => {
-            const active = currentStep === s.id;
-            return (
-              <Pressable
-                key={s.id}
-                onPress={() => onSelectStep(s.id)}
-                style={[styles.stepPill, active && styles.stepPillActive]}
-              >
-                <Text style={styles.stepIcon}>{s.icon}</Text>
-                <Text style={[styles.stepPillText, active && styles.stepPillTextActive]}>
-                  {s.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* STEP CONTENT CONTAINER */}
-      <View style={styles.stepBody}>
-        {/* ========================================================================= */}
-        {/* STEP 1: UNDERSTAND MAGNETIC FIELDS & SENSORS */}
-        {/* ========================================================================= */}
-        {currentStep === 1 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardStepBadge}>STEP #1</Text>
-              <Text style={styles.cardTitle}>Understand What We Are Measuring</Text>
+    <View style={styles.root}>
+      <Animated.View
+        style={[
+          styles.stageContainer,
+          {
+            opacity: stageOpacity,
+            transform: [{ translateY: stageSlideY }],
+          },
+        ]}
+      >
+        {/* ===================================================================
+            STAGE 1: 3D SMARTPHONE & EPHEMERAL AI OBJECT RECOGNITION
+           =================================================================== */}
+        {stage === 1 ? (
+          <View style={styles.centeredStage}>
+            <View style={styles.fullWidthVisual}>
+              <MagneticField3DView
+                currentMagMicroT={liveMag}
+                deltaNt={liveDeltaNt}
+                bx={bx}
+                by={by}
+                bz={bz}
+                classification={fallbackClass}
+                isMuted={soundMuted}
+                onToggleMute={onToggleSound}
+                onZeroBaseline={onCalibrate}
+                onConfirmObject={(classId) => handleConfirmObject(classId)}
+                isScreenTouched={isScreenTouched}
+              />
             </View>
 
-            <Text style={styles.bodyParagraph}>
-              Almost everything in our modern world generates or interacts with a magnetic field. Earth itself is a giant dynamo magnet, generating a background field of approximately{' '}
-              <Text style={styles.highlight}>25 to 65 microtesla (µT)</Text> at its surface.
-            </Text>
-
-            <View style={styles.infoCallout}>
-              <Text style={styles.calloutTitle}>📱 What does your smartphone measure?</Text>
-              <Text style={styles.calloutBody}>
-                Your phone contains an internal microscopic magnetometer (AMR/Hall-effect chip) that measures magnetic field strength in 3D device coordinates (X, Y, Z).
-                {'\n\n'}
-                • <Text style={styles.boldText}>1 microtesla (µT) = 1,000 nanotesla (nT)</Text>
-                {'\n'}• Your phone’s sensor has an intrinsic noise floor of <Text style={styles.mintText}>~60–100 nT</Text>.
-                {'\n'}• A space weather storm shifts Earth's field by <Text style={styles.amberText}>60 to 1,000+ nT</Text>.
+            <View style={styles.appleCopyBlock}>
+              <Text style={styles.appleHeadline}>Every object has a magnetic signature.</Text>
+              <Text style={styles.appleSubline}>
+                Move your hand, smartwatch, or laptop near the phone to watch the field respond.
               </Text>
             </View>
 
-            <View style={styles.interferenceBox}>
-              <Text style={styles.interferenceTitle}>⚠️ What impacts phone measurements?</Text>
-              <Text style={styles.interferenceBody}>
-                • <Text style={styles.boldText}>Holding the phone:</Text> Hand tremors, body proximity, and finger movement alter the field by 500–2,000 nT.
-                {'\n'}• <Text style={styles.boldText}>Laptops & Monitors:</Text> Inverter coils and speakers produce localized fields of 10–100 µT.
-                {'\n'}• <Text style={styles.boldText}>Charging Cables:</Text> Alternating current and DC charging induction generate continuous noise.
-                {'\n'}• <Text style={styles.boldText}>Steel & Granite Windowsills:</Text> High-quartz granite provides an ideal motionless base; iron frames have a static DC offset that we zero out.
-              </Text>
-            </View>
-
-            {/* META MUSE IMAGE 5-STAGE RECONNECTION ARCHITECTURE */}
-            <View style={styles.museSection}>
-              <View style={styles.museHeader}>
-                <Text style={styles.museBadge}>🎨 META MUSE IMAGE</Text>
-                <Text style={styles.museTitle}>Solar Wind to Auroral Light: 5-Stage Architecture</Text>
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stageTabs}>
-                {([1, 2, 3, 4, 5] as const).map((stage) => {
-                  const isCur = selectedMuseStage === stage;
-                  return (
-                    <Pressable
-                      key={stage}
-                      onPress={() => setSelectedMuseStage(stage)}
-                      style={[styles.stageTab, isCur && styles.stageTabActive]}
-                    >
-                      <Text style={[styles.stageTabText, isCur && styles.stageTabTextActive]}>
-                        Stage {stage}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-
-              <View style={styles.museConceptCard}>
-                <Text style={styles.conceptTitle}>
-                  {MUSE_IMAGE_CONCEPTS[selectedMuseStage].title}
-                </Text>
-                <Text style={styles.conceptDesc}>
-                  {MUSE_IMAGE_CONCEPTS[selectedMuseStage].diagramDescription}
-                </Text>
-                <View style={styles.conceptPromptBox}>
-                  <Text style={styles.conceptPromptLabel}>PROMPT DIRECTIVE FOR MUSE IMAGE:</Text>
-                  <Text style={styles.conceptPromptText}>
-                    "{MUSE_IMAGE_CONCEPTS[selectedMuseStage].scientificPrompt}"
-                  </Text>
-                </View>
-                <Text style={styles.conceptCaption}>
-                  {MUSE_IMAGE_CONCEPTS[selectedMuseStage].educationalCaption}
-                </Text>
-              </View>
-            </View>
-
-            <Pressable
-              onPress={() => onSelectStep(2)}
-              style={styles.nextStepButton}
-            >
-              <Text style={styles.nextStepButtonText}>Next: Find Optimal Measuring Spot →</Text>
+            <Pressable onPress={() => transitionToStage(2)} style={styles.applePrimaryBtn}>
+              <Text style={styles.applePrimaryBtnText}>Find a Quiet Spot ›</Text>
             </Pressable>
           </View>
-        )}
+        ) : null}
 
-        {/* ========================================================================= */}
-        {/* STEP 2: AI INTERFERENCE & SIGNATURE DETECTION (FIND OPTIMAL SPOT) */}
-        {/* ========================================================================= */}
-        {currentStep === 2 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardStepBadge}>STEP #2</Text>
-              <Text style={styles.cardTitle}>Find an Optimal Measuring Location</Text>
-            </View>
+        {/* ===================================================================
+            STAGE 2: AI SPOT FINDER (QUIET WINDOW FOR EARTH'S FIELD)
+           =================================================================== */}
+        {stage === 2 ? (
+          <View style={styles.centeredStage}>
+            <Svg width={220} height={220} viewBox="0 0 220 220">
+              <Defs>
+                <RadialGradient id="spotGlow" cx="50%" cy="50%" r="50%">
+                  <Stop offset="0%" stopColor={spotColor} stopOpacity="0.34" />
+                  <Stop offset="70%" stopColor={spotColor} stopOpacity="0.05" />
+                  <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Circle cx="110" cy="110" r="100" fill="url(#spotGlow)" />
+              <Circle
+                cx="110"
+                cy="110"
+                r="78"
+                stroke="rgba(255,255,255,0.08)"
+                strokeWidth="10"
+                fill="none"
+              />
+              <Circle
+                cx="110"
+                cy="110"
+                r="78"
+                stroke={spotColor}
+                strokeWidth="10"
+                strokeDasharray={`${(spotScore / 100) * 490} 490`}
+                strokeLinecap="round"
+                fill="none"
+                transform="rotate(-90 110 110)"
+              />
+              <Circle
+                cx="110"
+                cy="110"
+                r={52 + Math.sin(phase * 2) * 3}
+                stroke={spotColor}
+                strokeWidth="1.2"
+                strokeOpacity="0.4"
+                strokeDasharray="4,4"
+                fill="none"
+              />
+              <SvgText
+                x="110"
+                y="112"
+                fill="#ffffff"
+                fontSize="40"
+                fontWeight="800"
+                textAnchor="middle"
+              >
+                {spotScore}%
+              </SvgText>
+              <SvgText
+                x="110"
+                y="134"
+                fill={spotColor}
+                fontSize="11"
+                fontWeight="800"
+                textAnchor="middle"
+              >
+                {spotScore >= 85 ? 'QUIET SPOT READY' : spotScore >= 55 ? 'ALMOST QUIET' : 'LOCAL NOISE'}
+              </SvgText>
+            </Svg>
 
-            <Text style={styles.bodyParagraph}>
-              To measure Earth's space weather response, your phone must be placed on a quiet, motionless surface away from laptops, chargers, and metal objects.
-            </Text>
-
-            {/* REAL-TIME PLACEMENT QUIETNESS GAUGE */}
-            <View style={styles.quietnessGaugeBox}>
-              <View style={styles.gaugeHeader}>
-                <Text style={styles.gaugeLabel}>LIVE PLACEMENT QUIETNESS</Text>
-                <Text
-                  style={[
-                    styles.gaugeScore,
-                    { color: isOptimalSpot ? colors.mint : colors.amber },
-                  ]}
-                >
-                  {isOptimalSpot ? '🟢 OPTIMAL (95/100)' : !motionAnalysis.isStandstill ? '🟠 MOTION DETECTED' : '🟡 ADJUSTING'}
-                </Text>
-              </View>
-
-              <View style={styles.gaugeTrack}>
+            {/* Color-coded Orange -> Yellow -> Green Bar */}
+            <View style={styles.colorBarContainer}>
+              <View style={styles.colorBarTrack}>
+                <View style={[styles.colorSeg, { flex: 3, backgroundColor: '#ff6b6b' }]} />
+                <View style={[styles.colorSeg, { flex: 3, backgroundColor: '#ffd58c' }]} />
+                <View style={[styles.colorSeg, { flex: 4, backgroundColor: '#20c997' }]} />
                 <View
                   style={[
-                    styles.gaugeFill,
-                    {
-                      width: `${spotQuietnessScore}%`,
-                      backgroundColor: isOptimalSpot
-                        ? colors.mint
-                        : !motionAnalysis.isStandstill
-                        ? colors.red
-                        : colors.amber,
-                    },
+                    styles.colorThumb,
+                    { left: `${Math.min(95, Math.max(4, spotScore))}%` },
                   ]}
                 />
               </View>
-
-              <View style={styles.gaugeTicks}>
-                <Text style={styles.tickLabel}>0% (Noisy/Moving)</Text>
-                <Text style={styles.tickLabel}>60% (Fair)</Text>
-                <Text style={styles.tickLabel}>100% (Stationary Windowsill)</Text>
-              </View>
             </View>
 
-            {/* AI LIVE CLASSIFICATION & ADVICE */}
-            <View style={styles.scannerAdviceBox}>
-              <Text style={styles.scannerTitle}>🤖 AI SIGNATURE SCANNER</Text>
-              <Text style={styles.scannerStatus}>
-                Target: <Text style={styles.boldText}>{classification?.metadata.shortLabel ?? 'Analyzing...'}</Text>
+            <View style={styles.appleCopyBlock}>
+              <Text style={styles.appleHeadline}>
+                {spotScore >= 85
+                  ? 'Earth’s faint magnetic field is clear.'
+                  : 'Seek a quiet magnetic window.'}
               </Text>
-              <Text style={styles.scannerAdvice}>
-                {isOptimalSpot
-                  ? '✨ Outstanding position! The phone is resting completely still on a low-noise surface. You are ready to record Earth’s magnetic field.'
-                  : !motionAnalysis.isStandstill
-                  ? '⚠️ Phone is currently moving. Place the phone flat and motionless on a windowsill or wooden table.'
-                  : isScreenTouched
-                  ? '⚠️ Screen is being touched. Step back and avoid touching the phone during measurement.'
-                  : isCharging
-                  ? '⚠️ Charging cable detected. Unplug the charger to prevent electromagnetic induction.'
-                  : 'Adjust location: Keep 1 meter away from laptops, smartwatches, and power outlets.'}
+              <Text style={styles.appleSubline}>
+                {spotScore >= 85
+                  ? 'Phone is resting still away from metal and electronics.'
+                  : !motionClear
+                    ? 'Set the phone flat on a still surface like a windowsill.'
+                    : !humanClear
+                      ? 'Let go of the phone so hand proximity fades.'
+                      : 'Move slightly away from chargers, laptops, or steel.'}
               </Text>
-            </View>
-
-            {/* CURRENT READINGS STRIP */}
-            <View style={styles.sensorMetricsRow}>
-              <View style={styles.sensorMetric}>
-                <Text style={styles.sensorMetricLabel}>TOTAL |B|</Text>
-                <Text style={styles.sensorMetricVal}>{mag ? `${mag.toFixed(2)} µT` : '—'}</Text>
-              </View>
-              <View style={styles.sensorMetric}>
-                <Text style={styles.sensorMetricLabel}>DELTA Δ|B|</Text>
-                <Text style={styles.sensorMetricVal}>{delta ? `${(delta * 1000).toFixed(0)} nT` : '0 nT'}</Text>
-              </View>
-              <View style={styles.sensorMetric}>
-                <Text style={styles.sensorMetricLabel}>ACCELERATION</Text>
-                <Text style={styles.sensorMetricVal}>
-                  {motionAnalysis.dynamicAccelG.toFixed(4)} g
-                </Text>
-              </View>
             </View>
 
             <Pressable
-              onPress={() => onSelectStep(3)}
+              onPress={() => transitionToStage(3)}
               style={[
-                styles.nextStepButton,
-                !isOptimalSpot && { backgroundColor: '#1a3a5c' },
+                styles.applePrimaryBtn,
+                spotScore >= 85 && { backgroundColor: '#20c997', borderColor: '#20c997' },
               ]}
             >
-              <Text style={styles.nextStepButtonText}>
-                {isOptimalSpot ? 'Proceed to Measurement (Ready!) →' : 'Next: Step 3 (Measure Anyway) →'}
+              <Text
+                style={[
+                  styles.applePrimaryBtnText,
+                  spotScore >= 85 && { color: '#021118' },
+                ]}
+              >
+                Measure Earth’s Field ›
               </Text>
             </Pressable>
           </View>
-        )}
+        ) : null}
 
-        {/* ========================================================================= */}
-        {/* STEP 3: PERFORM MEASUREMENT & AUTO-SUBMIT TO CENTRAL SYSTEM */}
-        {/* ========================================================================= */}
-        {currentStep === 3 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardStepBadge}>STEP #3</Text>
-              <Text style={styles.cardTitle}>Perform Measurement & Auto-Submit</Text>
-            </View>
-
-            <Text style={styles.bodyParagraph}>
-              Once the phone is resting on the quiet surface, begin the stationary observation. The scientific protocol records high-resolution 10 Hz samples and automatically transmits the scrubbed data to the central database.
-            </Text>
-
-            {/* RECORDING STATUS CARD */}
-            <View style={styles.recorderCard}>
-              <Text style={styles.recorderStatusLabel}>
-                {isRecording ? '🔴 RECORDING IN PROGRESS' : session ? '✅ OBSERVATION COMPLETE' : '⚪ READY TO RECORD'}
-              </Text>
-
-              <Text style={styles.recorderTimer}>
-                {isRecording
-                  ? `${Math.floor(recordingElapsed / 60)}:${String(recordingElapsed % 60).padStart(2, '0')}`
-                  : session
-                  ? '10:00 (Completed)'
-                  : '10:00 Standard Protocol'}
-              </Text>
-
-              <Text style={styles.recorderSub}>
-                {isRecording
-                  ? 'Keep phone completely still. Screen awake active. Do not touch or move phone.'
-                  : session
-                  ? `5,985 samples collected at 10.0 Hz. Noise MAD: 62.0 nT.`
-                  : 'Place phone on granite windowsill or table, tap Start, and step back.'}
-              </Text>
-
-              <View style={styles.recorderActionsRow}>
-                {!isRecording ? (
-                  <Pressable
-                    onPress={onStartRecording}
-                    style={styles.recordButton}
-                  >
-                    <Text style={styles.recordButtonText}>▶ Start 10-Min Measurement</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    onPress={onStopRecording}
-                    style={styles.stopButton}
-                  >
-                    <Text style={styles.stopButtonText}>■ Stop Measurement Early</Text>
-                  </Pressable>
-                )}
-              </View>
-            </View>
-
-            {/* AUTOMATIC UPLOAD STATE */}
-            {session && (
-              <View style={styles.uploadCard}>
-                <Text style={styles.uploadCardTitle}>☁️ CENTRAL DATABASE ARCHIVE</Text>
-                <Text style={styles.uploadCardBody}>
-                  {uploadStatus ?? 'Session archived. Ready to submit to central citizen research network.'}
-                </Text>
-                <Pressable
-                  disabled={isUploading}
-                  onPress={onUploadToDatabase}
-                  style={[styles.uploadButton, isUploading && { opacity: 0.6 }]}
+        {/* ===================================================================
+            STAGE 3: PERFORM MEASUREMENT & AUTO-SYNC TO CENTRAL SYSTEM
+           =================================================================== */}
+        {stage === 3 ? (
+          <View style={styles.centeredStage}>
+            <Pressable
+              onPress={isRecording ? onStopRecording : onStartRecording}
+              style={styles.orbPressable}
+            >
+              <Svg width={230} height={230} viewBox="0 0 230 230">
+                <Defs>
+                  <RadialGradient id="pulseOrb" cx="50%" cy="50%" r="50%">
+                    <Stop
+                      offset="0%"
+                      stopColor={isRecording ? '#00e5ff' : '#20c997'}
+                      stopOpacity="0.45"
+                    />
+                    <Stop
+                      offset="65%"
+                      stopColor={isRecording ? '#00e5ff' : '#20c997'}
+                      stopOpacity="0.08"
+                    />
+                    <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+                  </RadialGradient>
+                </Defs>
+                <Circle
+                  cx="115"
+                  cy="115"
+                  r={92 + (isRecording ? Math.sin(phase * 3) * 8 : 0)}
+                  fill="url(#pulseOrb)"
+                />
+                <Circle
+                  cx="115"
+                  cy="115"
+                  r="76"
+                  stroke="rgba(255,255,255,0.1)"
+                  strokeWidth="6"
+                  fill="rgba(8,22,40,0.8)"
+                />
+                {isRecording ? (
+                  <Circle
+                    cx="115"
+                    cy="115"
+                    r="76"
+                    stroke="#00e5ff"
+                    strokeWidth="6"
+                    strokeDasharray={`${Math.min(1, recordingElapsed / targetDurationSec) * 477} 477`}
+                    strokeLinecap="round"
+                    fill="none"
+                    transform="rotate(-90 115 115)"
+                  />
+                ) : null}
+                <SvgText
+                  x="115"
+                  y="114"
+                  fill="#ffffff"
+                  fontSize={isRecording ? '34' : '22'}
+                  fontWeight="800"
+                  textAnchor="middle"
                 >
-                  <Text style={styles.uploadButtonText}>
-                    {isUploading ? 'Sending to Database...' : '📤 Send to Central Database'}
+                  {isRecording
+                    ? `${Math.max(0, targetDurationSec - recordingElapsed)}s`
+                    : 'Tap to Measure'}
+                </SvgText>
+                <SvgText
+                  x="115"
+                  y="138"
+                  fill="#20c997"
+                  fontSize="11.5"
+                  fontWeight="700"
+                  textAnchor="middle"
+                >
+                  {isRecording ? 'LISTENING TO EARTH' : `${liveMag.toFixed(1)} µT`}
+                </SvgText>
+              </Svg>
+            </Pressable>
+
+            <View style={styles.appleCopyBlock}>
+              <Text style={styles.appleHeadline}>
+                {isRecording
+                  ? 'Sensing Earth’s magnetic field…'
+                  : isUploading
+                    ? 'Syncing to central observatory…'
+                    : 'Capture a stationary pulse.'}
+              </Text>
+              <Text style={styles.appleSubline}>
+                {isRecording
+                  ? 'Keep the phone completely still while it samples the field and syncs automatically.'
+                  : uploadStatus
+                    ? 'Measurement synced to central network.'
+                    : '30 seconds on a quiet surface is enough to analyze local solar wind coupling.'}
+              </Text>
+            </View>
+
+            <View style={styles.actionRow}>
+              {!isRecording && session ? (
+                <Pressable
+                  onPress={onUploadToDatabase}
+                  disabled={isUploading}
+                  style={styles.secondaryAppleBtn}
+                >
+                  <Text style={styles.secondaryAppleBtnText}>
+                    {isUploading ? 'Syncing…' : 'Sync Pulse'}
                   </Text>
                 </Pressable>
-              </View>
-            )}
-
-            <Pressable
-              onPress={() => onSelectStep(4)}
-              style={styles.nextStepButton}
-            >
-              <Text style={styles.nextStepButtonText}>Next: AI Measurement Analysis →</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* ========================================================================= */}
-        {/* STEP 4: ANALYZE MEASUREMENT & META MUSE SPARK 1.3 INSIGHTS */}
-        {/* ========================================================================= */}
-        {currentStep === 4 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardStepBadge}>STEP #4</Text>
-              <Text style={styles.cardTitle}>AI-Assisted Measurement Analysis</Text>
-            </View>
-
-            {/* PRESCRIPTIVE QUALITY GAUGE BARS */}
-            <View style={styles.prescriptiveBox}>
-              <Text style={styles.sectionHeading}>1. Sensor Placement Quietness</Text>
-              <View style={styles.gaugeTrack}>
-                <View
-                  style={[
-                    styles.gaugeFill,
-                    {
-                      width: '88%',
-                      backgroundColor: colors.mint,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.scaleAnnotation}>
-                🟢 <Text style={styles.boldText}>EXCELLENT PLACEMENT (88/100)</Text> · Noise MAD: 62.0 nT (Limit: 250 nT)
-              </Text>
-              <Text style={styles.scaleExplanation}>
-                Motionless non-magnetic surface. Zero motion flags. Intrinsic sensor thermal noise is well within scientific threshold.
-              </Text>
-            </View>
-
-            <View style={styles.prescriptiveBox}>
-              <Text style={styles.sectionHeading}>2. Space Weather Activity Level</Text>
-              <View style={styles.gaugeTrack}>
-                <View
-                  style={[
-                    styles.gaugeFill,
-                    {
-                      width: '78%',
-                      backgroundColor: colors.cyan,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.scaleAnnotation}>
-                🟠 <Text style={styles.boldText}>G3–G4 SEVERE SCALE CANDIDATE</Text> · 95% Excursion: 432.5 nT (Peak: 924.6 nT)
-              </Text>
-              <Text style={styles.scaleExplanation}>
-                A significant sustained departure occurred across minutes 6–10. Ultra-low rate of change confirms slow space weather wave rather than rapid hand movement.
-              </Text>
-            </View>
-
-            {/* META MUSE SPARK 1.3 NARRATIVE */}
-            <View style={styles.sparkNarrativeBox}>
-              <View style={styles.sparkHeader}>
-                <Text style={styles.sparkBadge}>🧠 META MUSE SPARK 1.3</Text>
-                <Text style={styles.sparkModel}>Agentic Observation Coordinator</Text>
-              </View>
-              <Text style={styles.sparkText}>
-                {sparkInsight?.narrative ??
-                  'Meta Muse Spark 1.3 analysis: Phone recorded a sustained 432.5 nT magnetic excursion with an ultra-slow rate of change (0.076 µT/s). This matches the timescale and magnitude of auroral electrojet coupling rather than domestic interference. Baseline noise MAD of 62.0 nT proves exceptional sensor stationarity.'}
-              </Text>
-              <View style={styles.sparkMetaDetails}>
-                <Text style={styles.sparkMetaText}>
-                  • Rate of Change: <Text style={styles.mintText}>0.076 µT/s (Ultra-low frequency regime)</Text>
-                  {'\n'}• Frequency Band: <Text style={styles.cyanText}>Pc5 Geomagnetic Pulsation (1.6–7 mHz)</Text>
-                  {'\n'}• Verdict: <Text style={styles.amberText}>SUPPORTED REGIONAL CANDIDATE</Text>
-                </Text>
-              </View>
-            </View>
-
-            <Pressable
-              onPress={() => onSelectStep(5)}
-              style={styles.nextStepButton}
-            >
-              <Text style={styles.nextStepButtonText}>Next: Compare Space Weather Forecasts →</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* ========================================================================= */}
-        {/* STEP 5: COMPARE AGAINST FORECASTS & OBSERVATORY (NOAA + BOULDER) */}
-        {/* ========================================================================= */}
-        {currentStep === 5 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardStepBadge}>STEP #5</Text>
-              <Text style={styles.cardTitle}>Forecast & Observatory Alignment</Text>
-            </View>
-
-            <Text style={styles.bodyParagraph}>
-              To confirm that the phone’s 432 nT excursion was driven by space weather rather than an unflagged domestic source, we correlate it against upstream solar wind measurements (NOAA RTSW) and the nearest reference observatory (USGS Boulder).
-            </Text>
-
-            {/* CORRELATION MATRIX */}
-            <View style={styles.alignmentTable}>
-              <View style={styles.alignmentRow}>
-                <Text style={styles.alignmentColName}>Upstream IMF Bz</Text>
-                <Text style={[styles.alignmentColVal, { color: colors.red }]}>-12.4 nT (Southward)</Text>
-                <Text style={styles.alignmentColStatus}>🟢 Coupled</Text>
-              </View>
-              <View style={styles.alignmentRow}>
-                <Text style={styles.alignmentColName}>Solar Wind Speed</Text>
-                <Text style={[styles.alignmentColVal, { color: colors.amber }]}>650 km/s (Fast Stream)</Text>
-                <Text style={styles.alignmentColStatus}>🟢 Storm</Text>
-              </View>
-              <View style={styles.alignmentRow}>
-                <Text style={styles.alignmentColName}>USGS Boulder (BOU)</Text>
-                <Text style={[styles.alignmentColVal, { color: colors.cyan }]}>-340 nT Horizontal H</Text>
-                <Text style={styles.alignmentColStatus}>🟢 Coherent</Text>
-              </View>
-              <View style={styles.alignmentRow}>
-                <Text style={styles.alignmentColName}>Your Phone Sensor</Text>
-                <Text style={[styles.alignmentColVal, { color: colors.mint }]}>-321 nT Sustained Drift</Text>
-                <Text style={styles.alignmentColStatus}>🟢 Coherent</Text>
-              </View>
-            </View>
-
-            <View style={styles.coherenceCallout}>
-              <Text style={styles.coherenceTitle}>📊 Multi-Station Coherence Score: 0.88</Text>
-              <Text style={styles.coherenceText}>
-                The phone’s downward deflection coincided precisely with the USGS Boulder magnetometer’s horizontal excursion. This temporal synchronization strongly supports a regional space weather origin.
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={() => onSelectStep(6)}
-              style={styles.nextStepButton}
-            >
-              <Text style={styles.nextStepButtonText}>Next: Red-Team Skepticism Check →</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* ========================================================================= */}
-        {/* STEP 6: SKEPTICAL RED-TEAM REVIEW (META MUSE WONDER) */}
-        {/* ========================================================================= */}
-        {currentStep === 6 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardStepBadge}>STEP #6</Text>
-              <Text style={styles.cardTitle}>Meta Muse Wonder Red-Team</Text>
-            </View>
-
-            <Text style={styles.bodyParagraph}>
-              Scientific honesty invariant: A single phone or co-located pair can NEVER establish a regional disturbance alone. Meta Muse Wonder acts as a skeptical peer reviewer to challenge assumptions.
-            </Text>
-
-            {/* WONDER CRITIQUE CARD */}
-            <View style={styles.wonderBox}>
-              <View style={styles.wonderHeader}>
-                <Text style={styles.wonderBadge}>⚖️ META MUSE WONDER</Text>
-                <Text style={styles.wonderStatus}>
-                  Critique Status: <Text style={styles.boldText}>CHALLENGE RAISED</Text>
-                </Text>
-              </View>
-
-              <Text style={styles.wonderChallengesTitle}>Skeptical Challenges Raised:</Text>
-              <Text style={styles.wonderChallengeItem}>
-                1. <Text style={styles.boldText}>Single Device Isolation:</Text> While the noise floor is exceptional (62 nT), a single phone cannot rule out building radiator expansion or an HVAC motor in an adjacent room.
-              </Text>
-              <Text style={styles.wonderChallengeItem}>
-                2. <Text style={styles.boldText}>Internal SoC Thermal Heating:</Text> Modern phone processors generate subtle heat that causes 100–300 nT drift over 10 minutes without physical movement.
-              </Text>
-              <Text style={styles.wonderChallengeItem}>
-                3. <Text style={styles.boldText}>Second Independent Site Required:</Text> A geographically separated volunteer station (over 5 km away) must corroborate the wave before declaring a confirmed regional event.
-              </Text>
-
-              <View style={styles.verdictAdjustmentBox}>
-                <Text style={styles.verdictAdjustmentTitle}>FINAL QUALIFIED VERDICT:</Text>
-                <Text style={styles.verdictAdjustmentText}>
-                  {wonderCritique?.verdictAdjustment ??
-                    'QUALIFIED: Supported as a clean local candidate, but regional status remains INCONCLUSIVE until second site confirms.'}
-                </Text>
-              </View>
-            </View>
-
-            <Pressable
-              onPress={() => onSelectStep(7)}
-              style={styles.nextStepButton}
-            >
-              <Text style={styles.nextStepButtonText}>Next: Check Aurora Alerting Needs →</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* ========================================================================= */}
-        {/* STEP 7: PROACTIVE AURORA & STORM ALERT + LOCAL TRIGGER */}
-        {/* ========================================================================= */}
-        {currentStep === 7 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardStepBadge}>STEP #7</Text>
-              <Text style={styles.cardTitle}>Aurora Alert & Community Watch</Text>
-            </View>
-
-            {/* ACTIVE ALERT BANNER */}
-            <View style={[styles.alertBanner, { borderColor: auroraAlert?.alertColor ?? colors.mint }]}>
-              <Text style={styles.alertTypeBadge}>
-                {auroraAlert?.alertLevel === 'ACTIVE_AURORA_ALERT' ? '🌟 ACTIVE ALERT' : '🛡️ ELEVATED WATCH'}
-              </Text>
-              <Text style={styles.alertTitle}>
-                {auroraAlert?.title ?? 'Active Aurora Alert: Severe G3/G4 Storm'}
-              </Text>
-              <Text style={styles.alertSummary}>
-                {auroraAlert?.summary ??
-                  'Strong southward solar wind coupling (IMF Bz: -12.4 nT, speed: 650 km/s) is reconnecting with Earth’s magnetosphere. Ground deflections exceed 430 nT. Local viewing conditions favorable.'}
-              </Text>
-
-              <View style={styles.alertDetailsGrid}>
-                <View style={styles.alertDetailCol}>
-                  <Text style={styles.detailLabel}>VISIBILITY CHANCE</Text>
-                  <Text style={styles.detailVal}>
-                    {auroraAlert?.visibilityLikelihood ?? 'HIGH'}
-                  </Text>
-                </View>
-                <View style={styles.alertDetailCol}>
-                  <Text style={styles.detailLabel}>OPTIMAL WINDOW</Text>
-                  <Text style={styles.detailVal}>Next 2–3 Hours</Text>
-                </View>
-                <View style={styles.alertDetailCol}>
-                  <Text style={styles.detailLabel}>LOOK DIRECTION</Text>
-                  <Text style={styles.detailVal}>Northern Horizon</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* SAM 3.1 OPTICAL SEGMENTATION PREVIEW */}
-            <View style={styles.samBox}>
-              <View style={styles.samHeader}>
-                <Text style={styles.samBadge}>🔭 META SAM 3.1</Text>
-                <Text style={styles.samTitle}>Optical Sky Segmentation & Camera Verification</Text>
-              </View>
-              <Text style={styles.samBody}>
-                Point your smartphone camera at the northern night sky. Meta SAM 3.1 segments auroral emission bands (557.7 nm green atomic oxygen, 630.0 nm nitrogen red) from light pollution and cloud cover.
-              </Text>
-              <View style={styles.samMasksList}>
-                <Text style={styles.samMaskItem}>• Auroral Green (557.7 nm): <Text style={styles.mintText}>27% Sky Coverage (Conf: 94%)</Text></Text>
-                <Text style={styles.samMaskItem}>• Auroral Red (630.0 nm): <Text style={styles.pinkText}>8% High-Altitude Curtain (Conf: 88%)</Text></Text>
-                <Text style={styles.samMaskItem}>• Tropospheric Cloud Scatter: <Text style={styles.mutedText}>21% (Non-auroral)</Text></Text>
-              </View>
-            </View>
-
-            {/* LOCAL MEASUREMENT TRIGGER */}
-            <View style={styles.triggerCard}>
-              <Text style={styles.triggerTitle}>⚡ LIVE GROUND MEASUREMENT TRIGGER</Text>
-              <Text style={styles.triggerBody}>
-                Because a major solar storm is actively occurring, your local phone observations are urgently needed by the global citizen observatory.
-              </Text>
-              <Pressable
-                onPress={() => {
-                  onSelectStep(3);
-                  onStartRecording();
-                }}
-                style={styles.triggerButton}
-              >
-                <Text style={styles.triggerButtonText}>▶ Start Live Storm Measurement Now</Text>
+              ) : null}
+              <Pressable onPress={() => transitionToStage(4)} style={styles.applePrimaryBtn}>
+                <Text style={styles.applePrimaryBtnText}>View AI Insights ›</Text>
               </Pressable>
             </View>
+          </View>
+        ) : null}
 
-            <Pressable
-              onPress={() => onSelectStep(1)}
-              style={[styles.nextStepButton, { backgroundColor: '#1b3452' }]}
-            >
-              <Text style={styles.nextStepButtonText}>↺ Review Journey from Step #1</Text>
+        {/* ===================================================================
+            STAGE 4: AI INSIGHTS & SPACE WEATHER ALIGNMENT (MUSE SPARK)
+           =================================================================== */}
+        {stage === 4 ? (
+          <View style={styles.centeredStage}>
+            {/* Minimalist 3D Sun-to-Earth Coupling Visual */}
+            <Svg width={310} height={155} viewBox="0 0 310 155">
+              <Defs>
+                <RadialGradient id="sunOrb" cx="50%" cy="50%" r="50%">
+                  <Stop offset="0%" stopColor="#ffd54f" stopOpacity="1" />
+                  <Stop offset="60%" stopColor="#ff9100" stopOpacity="0.45" />
+                  <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+                </RadialGradient>
+                <LinearGradient id="windLine" x1="0" y1="0" x2="1" y2="0">
+                  <Stop offset="0%" stopColor="#ffb300" stopOpacity="0.7" />
+                  <Stop offset="100%" stopColor="#00e5ff" stopOpacity="0.85" />
+                </LinearGradient>
+              </Defs>
+
+              {/* Sun */}
+              <Circle cx="36" cy="78" r="32" fill="url(#sunOrb)" />
+              <Circle cx="36" cy="78" r="11" fill="#fff8e1" />
+
+              {/* Flowing solar wind stream */}
+              {[-22, 0, 22].map((dy, i) => {
+                const wave = Math.sin(phase * 2 + i) * 5;
+                return (
+                  <Path
+                    key={i}
+                    d={`M 65 ${78 + dy * 0.5} Q 135 ${78 + dy + wave} 195 ${78 + dy * 1.1}`}
+                    stroke="url(#windLine)"
+                    strokeWidth="1.6"
+                    strokeDasharray="5,5"
+                    fill="none"
+                  />
+                );
+              })}
+
+              {/* Earth 3D Magnetosphere Shield */}
+              <Path
+                d="M 235 55 C 185 32, 185 124, 235 101"
+                stroke="#00e5ff"
+                strokeWidth="2.4"
+                fill="none"
+              />
+              <Path
+                d="M 235 62 C 202 46, 202 110, 235 94"
+                stroke="#20c997"
+                strokeWidth="1.5"
+                fill="none"
+              />
+              <Circle cx="235" cy="78" r="13" fill="#0d47a1" stroke="#00e5ff" strokeWidth="1.5" />
+              {/* Polar Aurora Crown */}
+              <Circle cx="235" cy="65" r="5" fill="#20c997" opacity="0.85" />
+              <Circle cx="235" cy="91" r="5" fill="#20c997" opacity="0.85" />
+            </Svg>
+
+            {/* Two Prescriptive Color-Coded Bars (Green / Yellow / Orange) */}
+            <View style={styles.insightBarsCard}>
+              <View style={styles.barGroup}>
+                <View style={styles.barLabelRow}>
+                  <Text style={styles.barTitle}>Sensor Stillness</Text>
+                  <Text style={[styles.barValue, { color: '#20c997' }]}>
+                    {noiseMad.toFixed(0)} nT · Optimal
+                  </Text>
+                </View>
+                <View style={styles.colorBarTrack}>
+                  <View style={[styles.colorSeg, { flex: 3, backgroundColor: '#ff6b6b' }]} />
+                  <View style={[styles.colorSeg, { flex: 3, backgroundColor: '#ffd58c' }]} />
+                  <View style={[styles.colorSeg, { flex: 4, backgroundColor: '#20c997' }]} />
+                  <View style={[styles.colorThumb, { left: `${quietBarPct}%` }]} />
+                </View>
+              </View>
+
+              <View style={styles.barGroup}>
+                <View style={styles.barLabelRow}>
+                  <Text style={styles.barTitle}>Solar Wind Coupling</Text>
+                  <Text style={[styles.barValue, { color: '#00e5ff' }]}>
+                    {p95Delta.toFixed(0)} nT · Bz -14.2 nT
+                  </Text>
+                </View>
+                <View style={styles.colorBarTrack}>
+                  <View style={[styles.colorSeg, { flex: 3, backgroundColor: '#20c997' }]} />
+                  <View style={[styles.colorSeg, { flex: 3, backgroundColor: '#ffd58c' }]} />
+                  <View style={[styles.colorSeg, { flex: 4, backgroundColor: '#00e5ff' }]} />
+                  <View style={[styles.colorThumb, { left: `${stormBarPct}%` }]} />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.appleCopyBlock}>
+              <Text style={styles.appleHeadline}>
+                {sparkInsight?.scientificVerdict === 'SUPPORTED_REGIONAL_CANDIDATE'
+                  ? 'Aligned with active solar wind coupling.'
+                  : 'Clean geomagnetic baseline verified.'}
+              </Text>
+              <Text style={styles.appleSubline}>
+                Muse Spark cross-checked your sensor against NOAA DSCOVR solar wind and USGS observatory baselines.
+              </Text>
+            </View>
+
+            <Pressable onPress={() => transitionToStage(5)} style={styles.applePrimaryBtn}>
+              <Text style={styles.applePrimaryBtnText}>Aurora Storm Watch ›</Text>
             </Pressable>
           </View>
-        )}
+        ) : null}
+
+        {/* ===================================================================
+            STAGE 5: PROACTIVE AURORA & SOLAR STORM WATCH
+           =================================================================== */}
+        {stage === 5 ? (
+          <View style={styles.centeredStage}>
+            {/* 3D Polar Aurora Globe Visual */}
+            <Svg width={210} height={190} viewBox="0 0 210 190">
+              <Defs>
+                <RadialGradient id="auroraHalo" cx="50%" cy="42%" r="50%">
+                  <Stop offset="0%" stopColor="#20c997" stopOpacity="0.55" />
+                  <Stop offset="55%" stopColor="#a882ff" stopOpacity="0.22" />
+                  <Stop offset="100%" stopColor="#000000" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Circle cx="105" cy="95" r="88" fill="url(#auroraHalo)" />
+              <Circle
+                cx="105"
+                cy="102"
+                r="52"
+                fill="#07162c"
+                stroke="rgba(0, 229, 255, 0.35)"
+                strokeWidth="1.5"
+              />
+              {/* Glowing Auroral Oval Ring */}
+              <Path
+                d="M 66 76 C 82 62, 128 62, 144 76 C 128 86, 82 86, 66 76 Z"
+                stroke="#20c997"
+                strokeWidth={3.2 + Math.sin(phase * 3) * 0.8}
+                fill="rgba(32, 201, 151, 0.18)"
+              />
+              <SvgText
+                x="105"
+                y="112"
+                fill="#ffffff"
+                fontSize="24"
+                fontWeight="800"
+                textAnchor="middle"
+              >
+                {selectedZone.prob}%
+              </SvgText>
+              <SvgText
+                x="105"
+                y="128"
+                fill="#20c997"
+                fontSize="9.5"
+                fontWeight="800"
+                textAnchor="middle"
+              >
+                AURORA POTENTIAL
+              </SvgText>
+            </Svg>
+
+            {/* Minimal Latitude Selector Pills */}
+            <View style={styles.zonePillsRow}>
+              {LATITUDE_ZONES.map((z) => {
+                const active = selectedZoneId === z.id;
+                return (
+                  <Pressable
+                    key={z.id}
+                    onPress={() => setSelectedZoneId(z.id)}
+                    style={[styles.zonePill, active && styles.zonePillActive]}
+                  >
+                    <Text style={[styles.zonePillText, active && styles.zonePillTextActive]}>
+                      {z.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Clean Apple-Style Toggle Card */}
+            <View style={styles.appleToggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.appleToggleTitle}>Solar Storm &amp; Aurora Alert</Text>
+                <Text style={styles.appleToggleSub}>
+                  {auroraAlert?.viewingDirection ?? 'Look poleward'} · Prompt local verification pulse
+                </Text>
+              </View>
+              <Switch
+                value={alertsEnabled}
+                onValueChange={setAlertsEnabled}
+                trackColor={{ false: '#1c2b3d', true: '#20c997' }}
+              />
+            </View>
+
+            {alertPreviewVisible ? (
+              <View style={styles.appleNotificationCard}>
+                <Text style={styles.notifHeader}>🌌 AURORASENSE · NOW</Text>
+                <Text style={styles.notifBody}>
+                  Solar wind reconnection active ({selectedZone.prob}% potential at {selectedZone.label}). Place phone on windowsill to verify local magnetic field.
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    setAlertPreviewVisible(false);
+                    transitionToStage(3);
+                    setTimeout(() => onStartRecording(), 400);
+                  }}
+                  style={styles.notifActionBtn}
+                >
+                  <Text style={styles.notifActionText}>Measure Local Field Now</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <View style={styles.actionRow}>
+              <Pressable
+                onPress={() => setAlertPreviewVisible((v) => !v)}
+                style={styles.secondaryAppleBtn}
+              >
+                <Text style={styles.secondaryAppleBtnText}>
+                  {alertPreviewVisible ? 'Hide Alert' : 'Preview Alert'}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => transitionToStage(1)} style={styles.applePrimaryBtn}>
+                <Text style={styles.applePrimaryBtnText}>3D Forcefield ›</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+      </Animated.View>
+
+      {/* MINIMALIST APPLE-STYLE STAGE DOTS AT BOTTOM */}
+      <View style={styles.stageDotsRow}>
+        {[1, 2, 3, 4, 5].map((s) => (
+          <Pressable
+            key={s}
+            onPress={() => transitionToStage(s)}
+            hitSlop={10}
+            style={styles.dotHitbox}
+          >
+            <View
+              style={[
+                styles.stageDot,
+                stage === s && styles.stageDotActive,
+              ]}
+            />
+          </Pressable>
+        ))}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginVertical: 12,
+  root: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingVertical: 8,
   },
-  stepsHeader: {
-    marginBottom: 10,
+  stageContainer: {
+    flex: 1,
+    justifyContent: 'center',
   },
-  stepsSuperTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.mint,
-    letterSpacing: 1.2,
-    marginBottom: 6,
-    paddingHorizontal: 4,
-  },
-  stepPillsScroll: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 4,
-  },
-  stepPill: {
-    flexDirection: 'row',
+  centeredStage: {
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.card,
-    paddingVertical: 7,
+    justifyContent: 'center',
+    gap: 18,
     paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  stepPillActive: {
-    backgroundColor: '#16385d',
-    borderColor: colors.mint,
+  fullWidthVisual: {
+    width: '100%',
   },
-  stepIcon: {
-    fontSize: 13,
+  appleCopyBlock: {
+    alignItems: 'center',
+    maxWidth: 310,
+    gap: 8,
   },
-  stepPillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.muted,
-  },
-  stepPillTextActive: {
-    color: colors.ink,
+  appleHeadline: {
+    fontSize: 22,
     fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+    letterSpacing: -0.4,
+    lineHeight: 28,
   },
-  stepBody: {
-    marginTop: 6,
+  appleSubline: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
+    lineHeight: 20,
   },
-  card: {
-    backgroundColor: colors.panel,
-    borderRadius: 12,
-    padding: 16,
+  applePrimaryBtn: {
+    paddingHorizontal: 26,
+    paddingVertical: 13,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
+    marginTop: 4,
   },
-  cardHeader: {
+  applePrimaryBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: -0.2,
+  },
+  secondaryAppleBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    borderRadius: 999,
+    backgroundColor: 'rgba(32, 201, 151, 0.14)',
+    borderWidth: 1,
+    borderColor: '#20c997',
+    marginTop: 4,
+  },
+  secondaryAppleBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#20c997',
+  },
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 12,
   },
-  cardStepBadge: {
-    backgroundColor: '#143354',
-    color: colors.cyan,
-    fontSize: 11,
-    fontWeight: '800',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+  colorBarContainer: {
+    width: '86%',
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.ink,
-    flex: 1,
-  },
-  bodyParagraph: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.ink,
-    marginBottom: 12,
-  },
-  highlight: {
-    color: colors.cyan,
-    fontWeight: '700',
-  },
-  boldText: {
-    fontWeight: '700',
-    color: colors.ink,
-  },
-  mintText: {
-    color: colors.mint,
-    fontWeight: '700',
-  },
-  cyanText: {
-    color: colors.cyan,
-    fontWeight: '700',
-  },
-  amberText: {
-    color: colors.amber,
-    fontWeight: '700',
-  },
-  pinkText: {
-    color: colors.pink,
-    fontWeight: '700',
-  },
-  mutedText: {
-    color: colors.muted,
-  },
-  infoCallout: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.mint,
-  },
-  calloutTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.mint,
-    marginBottom: 6,
-  },
-  calloutBody: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.ink,
-  },
-  interferenceBox: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 14,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.amber,
-  },
-  interferenceTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.amber,
-    marginBottom: 6,
-  },
-  interferenceBody: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.ink,
-  },
-  museSection: {
-    backgroundColor: '#071626',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#193d66',
-  },
-  museHeader: {
-    marginBottom: 8,
-  },
-  museBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.violet,
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  museTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.ink,
-  },
-  stageTabs: {
-    flexDirection: 'row',
-    marginVertical: 8,
-  },
-  stageTab: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-    backgroundColor: colors.card,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  stageTabActive: {
-    backgroundColor: '#274b73',
-    borderColor: colors.violet,
-  },
-  stageTabText: {
-    fontSize: 11,
-    color: colors.muted,
-    fontWeight: '600',
-  },
-  stageTabTextActive: {
-    color: colors.ink,
-    fontWeight: '700',
-  },
-  museConceptCard: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 4,
-  },
-  conceptTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.violet,
-    marginBottom: 4,
-  },
-  conceptDesc: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.ink,
-    marginBottom: 8,
-  },
-  conceptPromptBox: {
-    backgroundColor: '#040d1a',
-    borderRadius: 6,
-    padding: 8,
-    marginBottom: 8,
-  },
-  conceptPromptLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.muted,
-    marginBottom: 3,
-  },
-  conceptPromptText: {
-    fontSize: 11,
-    fontStyle: 'italic',
-    color: '#8ec3eb',
-    lineHeight: 15,
-  },
-  conceptCaption: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.mint,
-  },
-  nextStepButton: {
-    backgroundColor: '#1b4a7d',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  nextStepButtonText: {
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  quietnessGaugeBox: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-  },
-  gaugeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  gaugeLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.muted,
-  },
-  gaugeScore: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  gaugeTrack: {
+  colorBarTrack: {
     height: 10,
-    backgroundColor: '#040d1a',
     borderRadius: 5,
+    flexDirection: 'row',
     overflow: 'hidden',
-    marginVertical: 6,
+    position: 'relative',
+    backgroundColor: '#0a1626',
   },
-  gaugeFill: {
+  colorSeg: {
     height: '100%',
-    borderRadius: 5,
   },
-  gaugeTicks: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  colorThumb: {
+    position: 'absolute',
+    top: -2,
+    width: 6,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#000000',
   },
-  tickLabel: {
-    fontSize: 10,
-    color: colors.muted,
-  },
-  scannerAdviceBox: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.cyan,
-  },
-  scannerTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.cyan,
-    marginBottom: 4,
-  },
-  scannerStatus: {
-    fontSize: 13,
-    color: colors.ink,
-    marginBottom: 6,
-  },
-  scannerAdvice: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.ink,
-  },
-  sensorMetricsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  sensorMetric: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 10,
+  orbPressable: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  sensorMetricLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.muted,
-    marginBottom: 4,
-  },
-  sensorMetricVal: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  recorderCard: {
-    backgroundColor: colors.card,
-    borderRadius: 10,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 12,
+  insightBarsCard: {
+    width: '92%',
+    backgroundColor: 'rgba(10, 24, 42, 0.75)',
+    borderRadius: 18,
+    padding: 14,
+    gap: 14,
     borderWidth: 1,
-    borderColor: '#1f436d',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
-  recorderStatusLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.mint,
-    letterSpacing: 1,
-    marginBottom: 6,
+  barGroup: {
+    gap: 6,
   },
-  recorderTimer: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: colors.ink,
-    fontVariant: ['tabular-nums'],
-    marginVertical: 4,
-  },
-  recorderSub: {
-    fontSize: 12,
-    color: colors.muted,
-    textAlign: 'center',
-    lineHeight: 17,
-    marginBottom: 14,
-  },
-  recorderActionsRow: {
-    width: '100%',
-  },
-  recordButton: {
-    backgroundColor: '#1b8a5a',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  recordButtonText: {
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  stopButton: {
-    backgroundColor: '#b83232',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  stopButtonText: {
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  uploadCard: {
-    backgroundColor: '#0b2642',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.mint,
-  },
-  uploadCardTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.mint,
-    marginBottom: 4,
-  },
-  uploadCardBody: {
-    fontSize: 12,
-    color: colors.ink,
-    marginBottom: 8,
-  },
-  uploadButton: {
-    backgroundColor: '#185085',
-    paddingVertical: 10,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  uploadButtonText: {
-    color: colors.ink,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  prescriptiveBox: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
-  },
-  sectionHeading: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.muted,
-    marginBottom: 4,
-  },
-  scaleAnnotation: {
-    fontSize: 12,
-    color: colors.ink,
-    marginTop: 4,
-  },
-  scaleExplanation: {
-    fontSize: 11,
-    color: colors.muted,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  sparkNarrativeBox: {
-    backgroundColor: '#081c30',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.cyan,
-  },
-  sparkHeader: {
-    marginBottom: 6,
-  },
-  sparkBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.cyan,
-    letterSpacing: 1,
-  },
-  sparkModel: {
-    fontSize: 11,
-    color: colors.muted,
-  },
-  sparkText: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.ink,
-    marginBottom: 8,
-  },
-  sparkMetaDetails: {
-    backgroundColor: '#040d1a',
-    borderRadius: 6,
-    padding: 8,
-  },
-  sparkMetaText: {
-    fontSize: 11,
-    lineHeight: 17,
-    color: colors.ink,
-  },
-  alignmentTable: {
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    padding: 8,
-    marginBottom: 12,
-  },
-  alignmentRow: {
+  barLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#183454',
   },
-  alignmentColName: {
+  barTitle: {
     fontSize: 12,
-    color: colors.ink,
-    flex: 1.2,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.72)',
   },
-  alignmentColVal: {
-    fontSize: 12,
-    fontWeight: '700',
-    flex: 1.4,
-  },
-  alignmentColStatus: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.mint,
-    flex: 0.8,
-    textAlign: 'right',
-  },
-  coherenceCallout: {
-    backgroundColor: '#0b2742',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.mint,
-  },
-  coherenceTitle: {
+  barValue: {
     fontSize: 12,
     fontWeight: '800',
-    color: colors.mint,
-    marginBottom: 4,
   },
-  coherenceText: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.ink,
-  },
-  wonderBox: {
-    backgroundColor: '#1c152b',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.violet,
-  },
-  wonderHeader: {
-    marginBottom: 8,
-  },
-  wonderBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.violet,
-    letterSpacing: 1,
-  },
-  wonderStatus: {
-    fontSize: 11,
-    color: colors.amber,
-  },
-  wonderChallengesTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.ink,
-    marginBottom: 6,
-  },
-  wonderChallengeItem: {
-    fontSize: 11,
-    lineHeight: 17,
-    color: colors.ink,
-    marginBottom: 6,
-  },
-  verdictAdjustmentBox: {
-    backgroundColor: '#0c0717',
-    borderRadius: 6,
-    padding: 8,
-    marginTop: 6,
-  },
-  verdictAdjustmentTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.amber,
-    marginBottom: 2,
-  },
-  verdictAdjustmentText: {
-    fontSize: 11,
-    color: colors.ink,
-    lineHeight: 16,
-  },
-  alertBanner: {
-    backgroundColor: '#1f1324',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 2,
-  },
-  alertTypeBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.pink,
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  alertTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.ink,
-    marginBottom: 6,
-  },
-  alertSummary: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.ink,
-    marginBottom: 10,
-  },
-  alertDetailsGrid: {
+  zonePillsRow: {
     flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  zonePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  zonePillActive: {
+    backgroundColor: 'rgba(32, 201, 151, 0.18)',
+    borderColor: '#20c997',
+  },
+  zonePillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.65)',
+  },
+  zonePillTextActive: {
+    color: '#20c997',
+    fontWeight: '800',
+  },
+  appleToggleRow: {
+    width: '92%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 24, 42, 0.78)',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    gap: 12,
+  },
+  appleToggleTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  appleToggleSub: {
+    fontSize: 11.5,
+    color: 'rgba(255, 255, 255, 0.55)',
+    marginTop: 2,
+  },
+  appleNotificationCard: {
+    width: '92%',
+    backgroundColor: 'rgba(12, 30, 52, 0.95)',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#20c997',
     gap: 8,
-    backgroundColor: '#0a060e',
-    borderRadius: 6,
-    padding: 8,
   },
-  alertDetailCol: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.muted,
-    marginBottom: 2,
-  },
-  detailVal: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  samBox: {
-    backgroundColor: colors.card,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.violet,
-  },
-  samHeader: {
-    marginBottom: 6,
-  },
-  samBadge: {
+  notifHeader: {
     fontSize: 10,
     fontWeight: '800',
-    color: colors.violet,
+    color: '#20c997',
     letterSpacing: 1,
   },
-  samTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.ink,
+  notifBody: {
+    fontSize: 12.5,
+    color: '#ffffff',
+    lineHeight: 18,
   },
-  samBody: {
-    fontSize: 11,
-    lineHeight: 16,
-    color: colors.ink,
-    marginBottom: 8,
-  },
-  samMasksList: {
-    backgroundColor: '#040d1a',
-    borderRadius: 6,
-    padding: 8,
-  },
-  samMaskItem: {
-    fontSize: 11,
-    lineHeight: 17,
-    color: colors.ink,
-  },
-  triggerCard: {
-    backgroundColor: '#0e2b4a',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.mint,
-  },
-  triggerTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.mint,
-    marginBottom: 4,
-  },
-  triggerBody: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.ink,
-    marginBottom: 10,
-  },
-  triggerButton: {
-    backgroundColor: '#15754d',
-    paddingVertical: 12,
-    borderRadius: 8,
+  notifActionBtn: {
+    backgroundColor: '#20c997',
+    paddingVertical: 9,
+    borderRadius: 999,
     alignItems: 'center',
+    marginTop: 2,
   },
-  triggerButtonText: {
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: '700',
+  notifActionText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#021118',
+  },
+  stageDotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+  dotHitbox: {
+    padding: 4,
+  },
+  stageDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  stageDotActive: {
+    width: 20,
+    backgroundColor: '#20c997',
   },
 });

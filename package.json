@@ -22,5 +22,8 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.46.0",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "expo": "^58.0.22"
   }
 }

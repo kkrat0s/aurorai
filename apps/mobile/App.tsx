@@ -38,12 +38,13 @@ import { PhysicalSensorContextPills } from './components/PhysicalSensorContextPi
 import { MagneticFieldScaleBar } from './components/MagneticFieldScaleBar';
 import { AiObjectLearningCard } from './components/AiObjectLearningCard';
 import { SolarReconnectionCard } from './components/SolarReconnectionCard';
-import { SevenStepsGuidedJourney } from './components/SevenStepsGuidedJourney';
+import { SevenStepsGuidedJourney, type ScanDurationOption } from './components/SevenStepsGuidedJourney';
 import { StormTrackScreen } from './components/StormTrackScreen';
 import { AuroraMapScreen } from './components/AuroraMapScreen';
 import { GroundTruthScreen } from './components/GroundTruthScreen';
 import { WhyModal } from './components/WhyModal';
 import { MuseSparkDrawer } from './components/MuseSparkDrawer';
+import { MagnetismIntroAnimation } from './components/MagnetismIntroAnimation';
 
 const savedFile = () => new File(Paths.document, 'aurorasense-session.json');
 const exportsDirectory = () => new Directory(Paths.cache, 'aurorasense-exports');
@@ -136,9 +137,22 @@ export default function App() {
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [currentTab, setCurrentTab] = useState<'storm' | 'map' | 'ground'>('ground');
+  const [clockMode, setClockMode] = useState<'replay' | 'live'>('replay');
   const [whyModalOpen, setWhyModalOpen] = useState(false);
   const [sparkDrawerOpen, setSparkDrawerOpen] = useState(false);
-  const [deepDiagnosticsOpen, setDeepDiagnosticsOpen] = useState(false);
+  const [targetDurationSec, setTargetDurationSec] = useState<ScanDurationOption>(30);
+  const targetDurationRef = useRef<ScanDurationOption>(30);
+  const [showIntro, setShowIntro] = useState(true);
+  const [titleFlash, setTitleFlash] = useState(true);
+  const [titleMenuOpen, setTitleMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!showIntro) {
+      setTitleFlash(true);
+      const t = setTimeout(() => setTitleFlash(false), 2400);
+      return () => clearTimeout(t);
+    }
+  }, [showIntro]);
 
   // Physical Device Multi-Modal Context
   const [motionAnalysis, setMotionAnalysis] = useState<MotionAnalysis>({
@@ -444,7 +458,7 @@ export default function App() {
           sessionRef.current.markers.push(scheduledMarker(cue, new Date().toISOString(), el / 1000));
         }
       }
-      if (el >= SENSOR_PROTOCOL.durationSeconds * 1000) gate.current!.stop('DURATION_COMPLETE');
+      if (el >= targetDurationRef.current * 1000) gate.current!.stop('DURATION_COMPLETE');
       else if (
         el >= 10_000 &&
         (!sessionRef.current?.samples.length || performance.now() - lastUiUpdate.current > 5000)
@@ -466,10 +480,15 @@ export default function App() {
   }, []);
 
   async function start() {
-    if (sessionRef.current || busy) return;
-    if (savedFile().exists) {
-      setStatus('A private recording is retained. Delete the local session before starting another.');
-      return;
+    if (busy) return;
+    if (sessionRef.current) {
+      sessionRef.current = null;
+    }
+    try {
+      const file = savedFile();
+      if (file.exists) file.delete();
+    } catch {
+      // ignore
     }
     setBusy(true);
     try {
@@ -588,7 +607,7 @@ export default function App() {
                 }
               }
               if (
-                receivedMonotonicMs - startMonotonic.current >= SENSOR_PROTOCOL.durationSeconds * 1000 ||
+                receivedMonotonicMs - startMonotonic.current >= targetDurationRef.current * 1000 ||
                 current.samples.length >= SENSOR_PROTOCOL.maximumSamples
               ) {
                 gate.current!.stop('DURATION_COMPLETE');
@@ -705,118 +724,130 @@ export default function App() {
   const prescriptiveReport = session && qc ? evaluateSessionPrescriptively(session, qc) : null;
 
   return (
-    <View style={styles.root}>
+    <View
+      style={styles.root}
+      onTouchStart={() => {
+        isScreenTouchedRef.current = true;
+        setIsScreenTouched(true);
+      }}
+      onTouchEnd={() => {
+        lastTouchEndMs.current = performance.now();
+        isScreenTouchedRef.current = false;
+        setIsScreenTouched(false);
+      }}
+      onTouchCancel={() => {
+        lastTouchEndMs.current = performance.now();
+        isScreenTouchedRef.current = false;
+        setIsScreenTouched(false);
+      }}
+    >
       <StatusBar barStyle="light-content" />
       {recording && <RecordingAwake />}
       {recording && guidedActive.current && <GuidedCue elapsed={elapsed} late={lateCue} />}
 
-      {/* TOP HEADER (MATCHING WIREFRAME) */}
-      <View style={styles.topHeader}>
-        <View>
-          <Text style={styles.wordmark}>
-            Aurora<Text style={{ color: colors.mint }}>Sense</Text>
-          </Text>
-          <Text style={styles.headerSubtitle}>AI-POWERED AURORA FORECASTING</Text>
-        </View>
+      {showIntro ? (
+        <MagnetismIntroAnimation visible={showIntro} onComplete={() => setShowIntro(false)} />
+      ) : (
+        <>
+          {/* MINIMAL TOP HEADER: AURORASENSE FLASHES THEN DIMS; MUSE SPARK PROMINENT */}
+          <View style={styles.topHeader}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setShowIntro(true)}
+              style={{
+                opacity: titleFlash ? 1 : 0.2,
+                paddingVertical: 2,
+              }}
+            >
+              <Text style={styles.wordmark}>
+                Aurora<Text style={{ color: colors.mint }}>Sense</Text>
+              </Text>
+            </Pressable>
 
-        {/* TOP RIGHT CAPSULE PILL: 🟢 Muse Spark | Evidence checked */}
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setSparkDrawerOpen(true)}
-          style={styles.museSparkPill}
-        >
-          <View style={styles.museSparkDot} />
-          <View>
-            <Text style={styles.museSparkTitle}>Muse Spark</Text>
-            <Text style={styles.museSparkSub}>Evidence checked</Text>
+            {/* TOP RIGHT CAPSULE PILL: 🟢 Muse Spark | Connected · Evidence checked */}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setSparkDrawerOpen(true)}
+              style={styles.museSparkPill}
+            >
+              <View style={styles.museSparkDot} />
+              <View>
+                <Text style={styles.museSparkTitle}>Muse Spark · Connected</Text>
+                <Text style={styles.museSparkSub}>Evidence checked</Text>
+              </View>
+            </Pressable>
           </View>
-        </Pressable>
-      </View>
 
-      {/* SCREEN CONTAINER BASED ON currentTab */}
-      <View style={styles.screenContainer}>
-        {currentTab === 'storm' && (
-          <StormTrackScreen
-            onOpenWhy={() => setWhyModalOpen(true)}
-            onOpenHistoricalReplay={() => setCurrentTab('ground')}
+          {/* SINGLE APPLE-STYLE GUIDED VISUAL EXPERIENCE */}
+          <View style={styles.screenContainer}>
+            <GroundTruthScreen
+              mag={mag}
+              delta={delta}
+              vector={vector}
+              motionAnalysis={motionAnalysis}
+              isScreenTouched={isScreenTouched}
+              isCharging={isCharging}
+              classification={aiClassification}
+              session={session}
+              qc={qc}
+              prescriptiveReport={prescriptiveReport}
+              soundMuted={soundMuted}
+              onToggleSound={() => {
+                const next = !soundMuted;
+                setSoundMuted(next);
+                soundEngine.current?.setMuted(next);
+              }}
+              calibrating={calibrating}
+              onCalibrate={calibrateBaseline}
+              adultConfirmed={adult}
+              onChangeAdult={(val) => {
+                setAdult(val);
+                gate.current!.setConsent(val, consent);
+              }}
+              recordingConsent={consent}
+              onChangeConsent={(val) => {
+                setConsent(val);
+                gate.current!.setConsent(adult, val);
+              }}
+              guidedProtocol={guided}
+              onChangeGuided={setGuided}
+              targetDurationSec={targetDurationSec}
+              onChangeTargetDurationSec={(sec) => {
+                setTargetDurationSec(sec);
+                targetDurationRef.current = sec;
+              }}
+              isRecording={recording}
+              recordingElapsed={elapsed}
+              onStartRecording={() => {
+                if (!adult) setAdult(true);
+                if (!consent) setConsent(true);
+                gate.current!.setConsent(true, true);
+                void start();
+              }}
+              onStopRecording={() => gate.current!.stop()}
+              hasRecordedSession={!!session}
+              onUploadDatabase={() => void uploadToCentralDatabase()}
+              isUploading={isUploading}
+              uploadStatus={uploadStatus}
+              onExportSession={(fmt) => void exportSession(fmt)}
+              onDeleteSession={deleteSession}
+              statusMessage={status}
+              currentStep={currentStep}
+              onSelectStep={setCurrentStep}
+              userFingerprints={userFingerprints}
+              onAddFingerprint={handleAddFingerprint}
+            />
+          </View>
+
+          {/* MUSE SPARK EVIDENCE DRAWER */}
+          <WhyModal visible={whyModalOpen} onClose={() => setWhyModalOpen(false)} />
+          <MuseSparkDrawer
+            visible={sparkDrawerOpen}
+            onClose={() => setSparkDrawerOpen(false)}
+            hasLocalSession={!!session}
           />
-        )}
-
-        {currentTab === 'map' && (
-          <AuroraMapScreen
-            onOpenSightings={() => setWhyModalOpen(true)}
-          />
-        )}
-
-        {currentTab === 'ground' && (
-          <GroundTruthScreen
-            mag={mag}
-            delta={delta}
-            vector={vector}
-            motionAnalysis={motionAnalysis}
-            classification={aiClassification}
-            prescriptiveReport={prescriptiveReport}
-            soundMuted={soundMuted}
-            onToggleSound={() => {
-              const next = !soundMuted;
-              setSoundMuted(next);
-              soundEngine.current?.setMuted(next);
-            }}
-            calibrating={calibrating}
-            onCalibrate={calibrateBaseline}
-            isRecording={recording}
-            recordingElapsed={elapsed}
-            onStartRecording={() => {
-              setAdult(true);
-              setConsent(true);
-              gate.current!.setConsent(true, true);
-              void start();
-            }}
-            onStopRecording={() => gate.current!.stop()}
-            hasRecordedSession={!!session}
-            onUploadDatabase={() => void uploadToCentralDatabase()}
-            isUploading={isUploading}
-            uploadStatus={uploadStatus}
-          />
-        )}
-      </View>
-
-      {/* BOTTOM THREE-TAB NAVIGATION BAR (MATCHING WIREFRAME) */}
-      <View style={styles.bottomTabBar}>
-        <Pressable
-          onPress={() => setCurrentTab('storm')}
-          style={[styles.bottomTabItem, currentTab === 'storm' && styles.bottomTabItemActive]}
-        >
-          <Text style={styles.bottomTabIcon}>🛰️</Text>
-          <Text style={[styles.bottomTabText, currentTab === 'storm' && styles.bottomTabTextActive]}>
-            1. Storm Track
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setCurrentTab('map')}
-          style={[styles.bottomTabItem, currentTab === 'map' && styles.bottomTabItemActive]}
-        >
-          <Text style={styles.bottomTabIcon}>🗺️</Text>
-          <Text style={[styles.bottomTabText, currentTab === 'map' && styles.bottomTabTextActive]}>
-            2. Aurora Map
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setCurrentTab('ground')}
-          style={[styles.bottomTabItem, currentTab === 'ground' && styles.bottomTabItemActive]}
-        >
-          <Text style={styles.bottomTabIcon}>🧭</Text>
-          <Text style={[styles.bottomTabText, currentTab === 'ground' && styles.bottomTabTextActive]}>
-            3. Ground Truth
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* WHY MODAL & MUSE SPARK DRAWER */}
-      <WhyModal visible={whyModalOpen} onClose={() => setWhyModalOpen(false)} />
-      <MuseSparkDrawer visible={sparkDrawerOpen} onClose={() => setSparkDrawerOpen(false)} />
+        </>
+      )}
     </View>
   );
 }
@@ -828,15 +859,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 48,
+    paddingTop: 46,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    backgroundColor: '#030a14',
+  },
+  wordmark: { color: colors.ink, fontSize: 21, fontWeight: '900', letterSpacing: -0.5 },
+  quickTitleMenu: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     paddingHorizontal: 16,
     paddingBottom: 10,
-    backgroundColor: '#040d1a',
+    backgroundColor: '#030a14',
     borderBottomWidth: 1,
     borderBottomColor: '#12253b',
   },
-  wordmark: { color: colors.ink, fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
-  headerSubtitle: { color: colors.mint, fontSize: 8.5, letterSpacing: 1.1, fontWeight: '800', marginTop: 1 },
+  quickMenuPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#0a1c33',
+    borderWidth: 1,
+    borderColor: '#1a3b60',
+  },
+  quickMenuPillActive: {
+    backgroundColor: 'rgba(104, 237, 195, 0.16)',
+    borderColor: colors.mint,
+  },
+  quickMenuPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#d9ecff',
+  },
   museSparkPill: {
     flexDirection: 'row',
     alignItems: 'center',

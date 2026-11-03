@@ -1,15 +1,15 @@
 # Hackathon contribution record
 
-Prepared October 28, 2026 for the Indie Developer entry. This is a reviewable account of the current implementation, not independent certification of authorship or proof of competition eligibility. The owner must verify dates, ownership, contributors and any prior work before submitting.
+Prepared October 28 – November 1, 2026 for the Indie Developer entry. This is a reviewable account of the current implementation, not independent certification of authorship or proof of competition eligibility. The owner must verify dates, ownership, contributors and any prior work before submitting.
 
 ## Newly implemented during this project session
 
-The October 28 implementation/progress record identifies:
+The October 28 – November 1 implementation/progress record identifies:
 
-- `apps/web/`: the three Next.js screens, shared Live/Replay clock, arrival-ensemble/revision display, NOAA map and viewing controls, local sensor import/QC display, Why? experience, Research results, audit/export, NOAA route and authenticated agent boundary.
-- `apps/mobile/`: the Expo foreground recorder with consent, native magnetic/motion samples, UTC/monotonic timing, cancellation, checkpoints, export/delete and prospective guided interaction cues.
-- `packages/shared/`: versioned acquisition contracts, deterministic QC, capture gate and interaction annotations with tests.
-- `packages/coordinator/`: seven typed tools, authorization, regional validator, scripted replay, bounded Meta adapter and Supabase budget/journal adapters with tests.
+- `apps/web/`: the three Next.js screens, shared Live/Replay clock, arrival-ensemble/revision display, NOAA map and viewing controls, local sensor import/QC display, **7-Step Citizen Science Journey** banner, **Prescriptive Diagnostic Evaluation** (Green/Yellow/Orange bars), **Central Citizen Magnetometer DB** (`/api/recordings`), **Meta AI Suite route** (`/api/meta`), Why? experience, Research results, audit/export, NOAA route and authenticated agent boundary.
+- `apps/mobile/`: the three-screen Expo foreground recorder (`StormTrackScreen`, `AuroraMapScreen`, `GroundTruthScreen`, `SevenStepsGuidedJourney`, `MuseSparkDrawer`) with consent, native magnetic/motion/touch samples, Brian Eno *Bloom*-inspired ambient harmonic sonification, AI-assisted interference/object signature classifier, UTC/monotonic timing, cancellation, checkpoints, export/delete and prospective guided interaction cues.
+- `packages/shared/`: versioned acquisition contracts, deterministic QC, capture gate, interaction annotations, interference classifier and prescriptive diagnostic evaluator with tests.
+- `packages/coordinator/`: seven typed tools, authorization, regional validator, scripted replay, bounded Meta `muse-spark-1.3` / `wonder` / `image` / `sam-3.1` adapters (`runLiveMetaSparkInsight`) and Supabase budget/journal adapters with tests.
 - `science/`: bounded scientific acquisition, Broomfield inspection, leakage-safe retrospective model comparison, phone-export/QC inspection and exploratory Gaussian-process/filter-transmission experiment.
 - `supabase/`: proposed managed schema/RLS/private-storage/budget/summary migrations and pgTAP tests; hosted execution remains unverified.
 - `.github/workflows/`, `demo/`, `docs/`: verification jobs, public source-hashed subsets, explicit synthetic fixture, measured reports, screenshots and reproduction instructions.
@@ -21,7 +21,7 @@ See `docs/progress.md` for commands, outcomes and limitations. At preparation, t
 - Approved `goal.md`, `assets.md`, `plan.md` and the supplied concept wireframe were project inputs. They are specifications/design direction, not newly written implementation or measured evidence. Later amendments are recorded in the progress log.
 - NASA, NOAA, USGS, OMNI and Broomfield records are pre-existing third-party scientific inputs. Acquisition/inspection/derived analyses are project work; the original observations/models are not ours.
 - Next.js/React/Expo/React Native, TypeScript, Zod and scientific libraries are upstream dependencies, not original inventions. Lockfiles and notices preserve attribution.
-- The two private phone recordings were collected by the owner on October 28. Their inspected aggregates are reported; raw records are not licensed for public distribution by their inclusion in the local workspace.
+- The three private phone recordings were collected by the owner on October 28 and October 31 (including the accepted 10-minute granite windowsill recording with `62.01 nT` baseline MAD). Their inspected aggregates are reported; raw records are not licensed for public distribution by their inclusion in the local workspace.
 - EZIE-Mag hardware and operating guides are external resources. No paired test or calibrated comparison has been completed.
 
 ## Demo attribution and assistance

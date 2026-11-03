@@ -51,7 +51,7 @@ interface AggregateSummary {
     verifiedIndependentSites: number;
     referenceStation: string;
     status: string;
-    coherenceScore: number;
+    coherenceScore: number | null;
   };
   updatedAtUtc: string;
 }
@@ -60,13 +60,19 @@ function loadAggregateSummary(): AggregateSummary {
   ensureDirectories();
   if (fs.existsSync(AGGREGATE_PATH)) {
     try {
-      return JSON.parse(fs.readFileSync(AGGREGATE_PATH, 'utf-8'));
+      const parsed = JSON.parse(fs.readFileSync(AGGREGATE_PATH, 'utf-8')) as AggregateSummary;
+      // Ensure no stale fabricated coherenceScore remains on disk
+      if (parsed.regionalCoherence && parsed.regionalCoherence.verifiedIndependentSites < 3) {
+        parsed.regionalCoherence.coherenceScore = null;
+        parsed.regionalCoherence.status = 'INCONCLUSIVE_SINGLE_OR_UNALIGNED_SITES';
+      }
+      return parsed;
     } catch {
       // Re-initialize if corrupted
     }
   }
 
-  // Initial seed with current ground state
+  // Initial seed with honest ground state
   const initial: AggregateSummary = {
     totalSubmissions: 0,
     acceptedSubmissions: 0,
@@ -75,10 +81,10 @@ function loadAggregateSummary(): AggregateSummary {
     averageNoiseMadNt: 62.0,
     recentSubmissions: [],
     regionalCoherence: {
-      verifiedIndependentSites: 1,
-      referenceStation: 'USGS Boulder (BOU)',
-      status: 'AWAITING_MULTI_STATION_OVERLAP',
-      coherenceScore: 0.88,
+      verifiedIndependentSites: 0,
+      referenceStation: 'USGS Boulder (BOU) · May 2024 Historical Archive',
+      status: 'INCONCLUSIVE_SINGLE_OR_UNALIGNED_SITES',
+      coherenceScore: null,
     },
     updatedAtUtc: new Date().toISOString(),
   };
@@ -125,11 +131,9 @@ function updateAggregateSummary(
 
   // Prepend to recent submissions (up to 20 entries)
   summary.recentSubmissions = [entry, ...summary.recentSubmissions.filter(s => s.submissionId !== session.id)].slice(0, 20);
-  summary.regionalCoherence.verifiedIndependentSites = Math.max(1, summary.acceptedSubmissions);
-  summary.regionalCoherence.status =
-    summary.acceptedSubmissions >= 3
-      ? 'MULTI_STATION_COHERENCE_SUPPORTED'
-      : 'AWAITING_FURTHER_INDEPENDENT_SITES';
+  summary.regionalCoherence.verifiedIndependentSites = summary.acceptedSubmissions;
+  summary.regionalCoherence.status = 'INCONCLUSIVE_SINGLE_OR_UNALIGNED_SITES';
+  summary.regionalCoherence.coherenceScore = null;
   summary.updatedAtUtc = new Date().toISOString();
 
   fs.writeFileSync(AGGREGATE_PATH, JSON.stringify(summary, null, 2), 'utf-8');
@@ -206,7 +210,7 @@ export async function POST(request: Request) {
           coherenceStatus: aggregate.regionalCoherence.status,
           verifiedSites: aggregate.regionalCoherence.verifiedIndependentSites,
         },
-        message: 'Recording successfully archived in central database registry.',
+        message: 'Recording archived in local central database registry (regional verdict remains INCONCLUSIVE pending ≥3 co-temporal independent sites).',
       },
       { status: 201 }
     );

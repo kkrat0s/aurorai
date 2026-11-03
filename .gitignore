@@ -19,6 +19,8 @@ data/database/
 phone-*-json.json
 phone-*-qc.json
 phone-*-csv.csv
+ScreenRecording_*.mp4
+*.mp4
 data/raw/
 science/private/
 *.log

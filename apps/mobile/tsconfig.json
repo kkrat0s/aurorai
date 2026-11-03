@@ -1,5 +1,21 @@
 {
   "extends": "expo/tsconfig.base",
-  "compilerOptions": { "strict": true, "noEmit": true, "paths": { "@aurorasense/shared/sensor": ["../../packages/shared/src/sensor.ts"] } },
-  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx", "../../packages/shared/src/sensor.ts"]
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "paths": {
+      "@aurorasense/shared/*": ["../../packages/shared/src/*.ts"],
+      "@aurorasense/coordinator": ["../../packages/coordinator/src/index.ts"]
+    }
+  },
+  "include": [
+    "App.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../../packages/shared/src/*.ts",
+    "../../packages/coordinator/src/*.ts"
+  ],
+  "exclude": ["**/*.test.ts"]
 }

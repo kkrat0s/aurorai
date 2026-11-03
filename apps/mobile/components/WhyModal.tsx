@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { MUSE_IMAGE_CONCEPTS } from '@aurorasense/coordinator';
+import { SolarStorm3DView } from './SolarStorm3DView';
 
 interface WhyModalProps {
   visible: boolean;
@@ -105,6 +106,9 @@ export function WhyModal({ visible, onClose }: WhyModalProps) {
           </View>
 
           <ScrollView style={styles.bodyScroll}>
+            {/* INTERACTIVE 3D SUN-TO-EARTH MAGNETOSPHERE ANIMATION */}
+            <SolarStorm3DView initialScenario="CARRINGTON_1859" compact />
+
             {/* TAG BADGE */}
             <View style={styles.tagBadge}>
               <Text style={styles.tagBadgeText}>{step.tag}</Text>

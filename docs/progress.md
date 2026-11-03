@@ -496,41 +496,74 @@ Final documentation check: 114 publication candidates / 7,478,085 bytes before t
 
 **Next exact action:** Run Expo mobile client on physical phone (`npm start --prefix apps/mobile`), follow the 7-step journey from Step #1 to Step #7, and inspect live Meta AI outputs on both phone and web.
 
-## Milestone 6 — UI Simplification & Three-Screen Wireframe Parity
+## Milestone 6 — UI Simplification, Three-Screen Wireframe Parity & Scientific Honesty Audit (2026-11-01)
 
-1. **Mobile UX Flow Simplification**:
-   - Replaced the cluttered, single-page vertical card stack with the clean, three-screen architecture specified in the approved wireframe (`assets/wireframes/aurorasense_three_screen_concept.png`):
-     - **Top Header Bar**: AuroraSense wordmark with Mint accent, paired with the capsule pill **`🟢 Muse Spark | Evidence checked`** opening the agentic coordinator drawer.
+1. **Mobile Three-Screen Wireframe Architecture + 7-Step Citizen Science Integration**:
+   - Structured the mobile app (`apps/mobile/App.tsx`) around the approved three-screen layout (`assets/wireframes/aurorasense_three_screen_concept.png`) with a shared `clockMode` (`'replay' | 'live'`) while strictly enforcing `AGENTS.md`, `goal.md`, and `plan.md` scientific honesty rules (no copied fictional wireframe numbers):
+     - **Top Header Bar**: AuroraSense wordmark with Mint accent, paired with the capsule pill **`🟢 Muse Spark | Evidence checked`** opening the coordinator drawer (`MuseSparkDrawer.tsx`, explicitly labeled `SCRIPTED POLICY DEMO · NO LIVE MODEL CALL`, `verdict: INCONCLUSIVE`).
      - **Screen 1: Storm Track (`apps/mobile/components/StormTrackScreen.tsx`)**:
-       - Time horizon pills (`Now`, `+6h`, `+12h`, `+24h`, `+48h`, `+72h`).
-       - Sun-to-Earth CME arrival visual diagram with multi-model hurricane-style projection curves (NASA ENLIL, EUROPA, ensemble path, uncertainty window).
-       - Prediction confidence card with progress bar (62% Moderate) and milestone ticks (Initial detection, Model update, Latest update, Next update).
-       - Historical replay – May 2024 card and "Why might this hit Earth?" science launcher.
+       - Shared mode selector (`Historical Replay · May 2024` vs. `Live Upstream Snapshot`).
+       - Displays the verified NASA CCMC CME Scoreboard ensemble for `2024-05-08T12:24:00-CME-001` (10 pre-outcome submissions across 7 distinct methods: `DBEM`, `WSA-ENLIL+Cone`, `EUHFORIA`, `HUXt`, `EAMv2`, `SARM`, spanning `15.2 h` arrival spread from `May 10, 12:58 UTC` to `May 11, 04:11 UTC` vs. observed shock arrival `May 10, 16:45 UTC`).
+       - Replaces the wireframe's fictional `"Moderate (62%)"` confidence with the actual ensemble arrival-time spread and an expandable submission table.
      - **Screen 2: Aurora Map (`apps/mobile/components/AuroraMapScreen.tsx`)**:
-       - Time horizon pills (`Now`, `+30 min`, `+1 hour`, `+3 hours`).
-       - High-fidelity polar auroral oval projection with Magnetic North Pole center, coordinate graticules (180°, 90°W, 0°, 90°E), and glowing green-to-red auroral oval.
-       - Lower chance to Higher chance heatmap scale bar.
-       - Layer toggles (`Aurora probability`, `Cloud cover`, `Darkness (night)`).
-       - Scientific callout: `Modeled auroral activity ≠ guaranteed visible aurora`.
-       - Recent community sightings photo gallery preview card.
-     - **Screen 3: Ground Truth (`apps/mobile/components/GroundTruthScreen.tsx`)**:
-       - Sub-tabs: `[ My Sensor ] [ Nearby Devices ] [ Reference Station ]`.
-       - Your phone magnetometer card: $X, Y, Z$ microtesla values in device frame colors (Blue $X$, Mint $Y$, Violet $Z$), 3-axis time-series chart with dual positive/negative deflection (-80 to +80 nT), soundscape toggle and zero calibration.
-       - Regional comparison card: detrended comparison between filtered phone, community average, and USGS Boulder reference station.
-       - Quality & local interference card: shows `⚠️ Local interference detected (excluded)` with mini sparkline when noisy/moving; shows `Session quality: 🟢 Good` (`Device stable`, `Low motion`, `Usable data`) when clean.
-       - Prescriptive evaluation bars (Quietness & Space Weather scale).
-       - Bottom CTA: `((•)) Contribute 10-min stationary reading >`.
-     - **Bottom Three-Tab Navigation Bar**:
-       - Fixed bottom navigation switching between `[ 🛰️ 1. Storm Track ]`, `[ 🗺️ 2. Aurora Map ]`, and `[ 🧭 3. Ground Truth ]`.
-     - **Slide-up Drawers / Modals**:
-       - **WhyModal (`apps/mobile/components/WhyModal.tsx`)**: 5-stage reviewed educational story with Meta Muse Image visual prompt concepts.
-       - **MuseSparkDrawer (`apps/mobile/components/MuseSparkDrawer.tsx`)**: Meta Muse Spark 1.3 observation coordinator with audited tool calls and deterministic validation results.
+       - Polar auroral oval projection with coordinate graticules (`180°`, `90°W`, `0°`, `90°E`), USGS Boulder (`BOU 40°N`) reference marker, and layer toggles (`Modeled activity`, `Ground evidence`, `Twilight / Night`).
+       - Enforces NOAA OVATION short-term horizon rules (never extrapolating OVATION to `+1h / +3h / +72h`, and never relabeling current NOAA data as a May 2024 historical forecast).
+       - Coarse viewing region selector (`Boulder`, `Fairbanks`, `Reykjavik`, `Tromsø`) with explicit `Cloud cover: Unknown (no live weather API connected)` and `Confirmed Optical Sightings: 0 Loaded (NONE LOADED)`.
+     - **Screen 3: Ground Truth (`apps/mobile/components/GroundTruthScreen.tsx` & `SevenStepsGuidedJourney.tsx`)**:
+       - Seamless view switcher between **`📊 Sensor & Wireframe View`** and **`🧭 7-Step Citizen Journey (Step #1–#7)`**.
+       - Strictly labels 3-axis magnetometer readings as `X · DEVICE FRAME`, `Y · DEVICE FRAME`, `Z · DEVICE FRAME` in `µT` (`1 µT = 1,000 nT`), never geographic North-South/East-West/Vertical.
+       - Regional comparison card explicitly reports `0 other verified live citizen phones connected` and labels the May 2024 USGS Boulder (`BOU`) curve as an unaligned historical scale reference (`verdict: INCONCLUSIVE`).
+       - Preserves explicit **Adult (18+) & Foreground Recording Consent** switches, guided local interference protocol toggle, and private local **`Export JSON` / `Export CSV` / `Export QC` / `Send to DB` / `Delete Local`** controls.
 
-2. **Executed Verification**:
-   - Root Vitest suite: **100 passed** across 11 test files (`npm test`).
-   - Root, mobile, shared, coordinator, and web TypeScript checks: **0 errors**.
-   - ESLint: **0 errors, 0 warnings**.
-   - Next.js production build succeeded with `/api/meta` and `/api/recordings` dynamic server routes.
-   - Python science test suite: **28 passed**.
+2. **Web Dashboard & Meta AI Suite Honesty (`packages/coordinator/src/meta-suite.ts`, `apps/web/app/api/meta/route.ts`, `apps/web/app/api/recordings/route.ts`, `apps/web/components/dashboard.tsx`)**:
+   - Integrated the interactive **7-Step Citizen Science Journey Stepper Banner** (`[ 1. Understand ] ➔ [ 2. Spot Finder ] ➔ [ 3. Measure ] ➔ [ 4. AI Insights ] ➔ [ 5. Compare ] ➔ [ 6. Red-Team ] ➔ [ 7. Alerts ]`) at the top of the Web Ground Truth tab.
+   - Enforced single-site regional verdict invariants in `meta-suite.ts` and `/api/recordings`:
+     - Any single-phone recording always carries `regionalVerdict: 'INCONCLUSIVE'` and `coherenceScore: null` (`status: 'INCONCLUSIVE_SINGLE_OR_UNALIGNED_SITES'`), never claiming temporal coherence between a 2026 phone session and the May 2024 USGS Boulder archive.
+     - Added `executionMode: 'LIVE_META_API' | 'LOCAL_DETERMINISTIC_EVALUATOR'` and `modelCalled: boolean` to `SparkInsightResult`, plus `runLiveMetaSparkInsight` which invokes `https://api.meta.ai/v1/responses` (`muse-spark-1.3`) when a server-side `META_MODEL_API_KEY` is configured and falls back cleanly with `modelCalled: false` when absent.
+     - Explicitly labeled `SAM 3.1` and `Muse Image` outputs as `CONCEPTUAL_SPECIFICATION_DEMO` / `CONCEPTUAL_SPECIFICATION` (`modelCalled: false`).
 
-**Next exact action:** Launch the mobile client in Expo Go to inspect the simplified 3-screen wireframe flow and test tab navigation between Storm Track, Aurora Map, and Ground Truth.
+3. **Executed Verification (2026-11-01)**:
+   - Root Vitest suite: **101 passed** across 11 test files (`npm test`).
+   - Root, mobile, shared, coordinator, and web TypeScript checks: **0 errors** (`npm run typecheck` and `npm run typecheck --prefix apps/mobile`).
+   - ESLint: **0 errors, 0 warnings** (`npm run lint`).
+   - Next.js 16.4.3 production build: **succeeded** (`npm run build`).
+   - Python science test suite: **28 passed** (`python -m unittest discover -s science/tests -v`).
+
+4. **Remaining External / Owner Submission Gates**:
+   - Genuine credentialed `muse-spark-1.3` tool-calling run (`META_MODEL_API_KEY` in `apps/web/.env.local`) and hosted Supabase Auth/RLS/Storage verification remain external owner gates before claiming live cloud agent execution.
+   - Android physical device validation, EZIE-Mag paired run (currently assembled/not operating), final 3-minute demonstration video recording, and public GitHub repository push/submission portal completion before **2026-11-04 21:00 America/New_York**.
+
+## Milestone 7 — Minimal-Text 3D Magnetic Unraveling Journey, Launch Intro & Ephemeral AI Object Whisper Cards (2026-11-02)
+
+1. **Metro Workspace Bundler Resolution (`apps/mobile/metro.config.js`, `apps/mobile/tsconfig.json`, `packages/coordinator/package.json`)**:
+   - Resolved iOS Expo Go bundling error (`Unable to resolve "@aurorasense/coordinator" from "components\WhyModal.tsx"`) by registering `packages/coordinator`, `packages/shared`, and workspace `node_modules` in `apps/mobile/metro.config.js` and adding `"main": "./src/index.ts"` to `packages/coordinator/package.json`.
+
+2. **Apple-Style 3D Launch Intro Animation & Sequential 3D Device Showcase (`apps/mobile/components/MagnetismIntroAnimation.tsx`, `apps/mobile/components/Intro3DMeshes.tsx`)**:
+   - Created a 9-step (`stageIdx = 0..8`), 60fps 3D SVG launch intro setting the stage with historical quotes, an always-visible volumetric 3D glowing Sun (`cx = 28, cy = 120`, multi-layered radial corona + 28 rotating 3D plasma granules, zero field lines) paired with a zooming 3D Earth asymmetric magnetosphere (`L = 1.9, 3.0, 4.3` compressed dayside bow shock and stretched nightside magnetotail), and the **September 1, 1859 Carrington Superstorm**:
+     - **600 BC · Thales of Miletus**, **1600 · William Gilbert**, and **1831 · Michael Faraday** quotes with tap-to-advance transitions and continuous 3D camera zoom (`0.76x ➔ 1.05x ➔ 1.28x`) that keeps the 3D glowing Sun in frame on the left.
+     - **September 1, 1859 Carrington Event (`stageIdx = 3`)**: Overwhelming swarm of **145 glowing radial-halo plasma spots** (`RadialGradient`, no line tails) pummeling Earth's magnetosphere and igniting global auroras while revealing the historical telegraph-fire narrative.
+     - **Slow-Motion Freeze + Sequential 3D Device Showcase (`stageIdx = 4..8`, `Intro3DMeshes.tsx`)**: Moving onward from the 1859 Carrington page keeps the 3D Sun, Earth, magnetic fields, and glowing plasma swarm on screen while smoothly decelerating (`speedMultiplier` eases to `0` over `2.4s`) and freezing them as the modern consequence text and microprocessor insight callout appear (*"Almost everything electronic now has a microprocessor inside—from satellites, cars, and smartphones to power grids, water pumps, hospitals, and AI..."*). Each subsequent tap (`stageIdx = 5..8`) showcases one of the **4 Blinn-Phong shaded 3D rotating polygon meshes** (`SATELLITE_MESH`, `CAR_MESH`, `SMARTPHONE_MESH`, `MICROPROCESSOR_MESH`) zoomed-in first in the center of the page (`scale = 1.46`), throwing ballistic sparks and pinpoint 3D plasma arc-flashes (`BROWNOUT`), charring into `BLACKOUT` with rising 3D smoke, and then zooming out into its respective 2×2 square (`React.memo` freezes previously docked meshes and the frozen solar storm backdrop so the 4th object — `MICROPROCESSOR_MESH` — runs at full speed with zero JS bridge lag).
+
+3. **Deactivated/Dimmed Header Chrome & Prominent Muse Spark Pill (`apps/mobile/App.tsx`)**:
+   - Removed the `Storm Track / Aurora Map / Ground Truth` tab bars and `Quiet Wind / 2024 G5 / 1859 Carrington` event buttons.
+   - `AuroraSense` wordmark flashes on launch and then dims to low opacity (`0.20`) unless tapped (tapping replays the 3D intro); top-right **`🟢 Muse Spark · Connected / Evidence checked`** pill remains prominent and opens `MuseSparkDrawer.tsx`.
+
+4. **High-Craft 3D Smartphone & Ephemeral AI Object Whisper Cards (`apps/mobile/components/MagneticField3DView.tsx`)**:
+   - Upgraded the 3D smartphone model with extruded 3D side rails, front bezel, illuminated glass display with perspective grid, Dynamic Island cutout, internal glowing 3-axis magnetometer sensor chip, live 3D vector arrow, and multi-shell toroidal dipole field loops with flowing particles.
+   - Removed all permanent Hand/Smartwatch/Laptop cards from the screen. Instead, AI-recognized objects appear **only as a temporary/ephemeral floating card** when a magnetic perturbation actually occurs ($|\Delta B| > 320\text{ nT}$ or touch/device proximity), with 1-tap user validation pills (`🖐️ Hand`, `⌚ Watch`, `💻 Laptop`, `🔌 Charger`, `🔑 Metal`) to confirm and teach fingerprints before fading away.
+
+5. **Minimal-Text Unraveling Vertical Adventure & 3D Solar Storm / 1859 Carrington Simulator (`apps/mobile/components/SevenStepsGuidedJourney.tsx`, `apps/mobile/components/SolarStorm3DView.tsx`, `apps/web/components/solar-storm-3d.tsx`)**:
+   - Removed the 7-step top button bar and permanent checklist cards in favor of a continuous, visual-first scroll journey:
+     - **Act I**: 3D Smartphone Forcefield + ephemeral AI object validation card.
+     - **Act II**: Visual 3D Concentric Quiet-Spot Compass (`0–100%`), Red/Yellow/Green spectrum bar, and 4 compact status orbs (`🖐️ Hand`, `⌚ Metal`, `⚡ Power`, `🪨 Still`).
+     - **Act III**: AI Earth-Field Resonance meter (`%`) + interactive **3D Sun-to-Earth Magnetosphere & CME Simulator** (`r = L \cdot \sin^2\theta$ dipole compression, Kelvin-Helmholtz boundary waves, magnetotail reconnection, **"☀️ Tap to Fire CME"**, and **1859 Carrington telegraph-fire superstorm** vs. **May 2024 G5**).
+     - **Act IV**: Selectable `30s` / `2m` / `10m` capture orb + Green/Yellow/Orange diagnostic spectrum bars & 1-tap central mesh sync.
+     - **Act V**: Dual-wave Phone vs. USGS Boulder (`BOU`) overlay, **4 Semi-Circle Human Impact Dials** (`Power Grid`, `Satellites`, `GPS / Nav`, `HF Radio`), and interactive Kp comparison curve.
+     - **Act VI**: Visual Multi-Phone Constellation Mesh (`Muse Wonder` single-site `INCONCLUSIVE` guard) + per-phone Aurora Storm Watch toggle & push alert preview.
+
+6. **Executed Verification (2026-11-02)**:
+   - `npm run typecheck` & `npm run typecheck --prefix apps/mobile`: **0 errors**.
+   - `npm run lint`: **0 errors, 0 warnings**.
+   - `npm test`: **101 passed** across 11 test files.
+   - `npm run build`: Next.js 16.4.3 production build **succeeded**.
+
