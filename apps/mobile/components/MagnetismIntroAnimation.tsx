@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -37,23 +38,23 @@ interface QuoteStage {
 
 const INITIAL_QUOTES: QuoteStage[] = [
   {
-    eyebrow: '600 BC · THALES OF MILETUS',
-    quote: '“The lodestone has a soul, for it moves the iron.”',
-    subline: 'An unseen force permeating the cosmos.',
+    eyebrow: 'EARLY MAGNETISM · LODESTONES',
+    quote: 'A natural magnet can attract iron without touching it.',
+    subline: 'Magnetic fields connect everyday observations with planetary science.',
     targetZoom: 0.76,
     earthReveal: 0.28,
   },
   {
     eyebrow: '1600 · WILLIAM GILBERT',
-    quote: '“The Earth itself is a great magnet.”',
+    quote: 'Gilbert described Earth as a magnet.',
     subline: 'Compressed on the sunlit side and stretched into a vast tail away from the Sun.',
     targetZoom: 1.05,
     earthReveal: 0.88,
   },
   {
-    eyebrow: '1831 · FARADAY & MAXWELL',
-    quote: '“Every electric current creates a magnetic field—and every shifting magnetic field induces electricity.”',
-    subline: 'When solar wind slams into Earth’s magnetic shield, shifting flux drives electric currents below.',
+    eyebrow: '1831 · MICHAEL FARADAY',
+    quote: 'Changing magnetic flux can induce an electric field.',
+    subline: 'During geomagnetic storms, changing fields can drive currents in long conductors.',
     targetZoom: 1.28,
     earthReveal: 1.0,
   },
@@ -670,9 +671,9 @@ const SolarMagnetosphereBackdrop = React.memo(function SolarMagnetosphereBackdro
 // 4 3D Devices and their 2x2 Square offsets relative to the grid center
 const MODERN_DEVICES = [
   { id: 'sat' as const, label: 'ORBITAL SATELLITE', slotX: -82, slotY: -62 },
-  { id: 'car' as const, label: 'AUTONOMOUS VEHICLE', slotX: 82, slotY: -62 },
-  { id: 'phone' as const, label: 'SMARTPHONE', slotX: -82, slotY: 62 },
-  { id: 'chip' as const, label: 'AI MICROPROCESSOR', slotX: 82, slotY: 62 },
+  { id: 'car' as const, label: 'NAVIGATION', slotX: 82, slotY: -62 },
+  { id: 'phone' as const, label: 'COMMUNICATIONS', slotX: -82, slotY: 62 },
+  { id: 'chip' as const, label: 'POWER DEPENDENCE', slotX: 82, slotY: 62 },
 ];
 
 export function MagnetismIntroAnimation({
@@ -1065,22 +1066,22 @@ export function MagnetismIntroAnimation({
   // Determine bottom prompt text
   let bottomPromptText = 'Tap to continue';
   if (stageIdx === 4) {
-    bottomPromptText = 'Tap to showcase impact (1/4: Orbital Satellite) ›';
+    bottomPromptText = 'Tap to explore risk (1/4: Satellite services) ›';
   } else if (stageIdx === 5) {
     bottomPromptText = isTransitioning
-      ? 'Induced surge frying satellite avionics...'
-      : 'Tap for next impact (2/4: Autonomous Vehicle) ›';
+      ? 'Illustrating possible satellite service disruption...'
+      : 'Tap for next risk (2/4: Navigation) ›';
   } else if (stageIdx === 6) {
     bottomPromptText = isTransitioning
-      ? 'High-voltage EV bus & sensors overloading...'
-      : 'Tap for next impact (3/4: Smartphone) ›';
+      ? 'Illustrating possible navigation disruption...'
+      : 'Tap for next risk (3/4: Communications) ›';
   } else if (stageIdx === 7) {
     bottomPromptText = isTransitioning
-      ? 'Logic board & neural SoC arcing...'
-      : 'Tap for final impact (4/4: AI Microprocessor) ›';
+      ? 'Illustrating possible communications disruption...'
+      : 'Tap for final risk (4/4: Power-dependent services) ›';
   } else if (stageIdx === 8) {
     bottomPromptText = isTransitioning
-      ? 'AI tensor cores & HBM stacks burning out...'
+      ? 'Illustrating dependence on reliable electric power...'
       : 'Tap to enter AuroraSense ›';
   }
 
@@ -1147,10 +1148,10 @@ export function MagnetismIntroAnimation({
                     },
                   ]}
                 >
-                  <Text style={styles.carringtonBigDate}>September 1, 1859</Text>
+                  <Text style={styles.carringtonBigDate}>September 1859</Text>
                   <Text style={styles.carringtonEventBadge}>THE CARRINGTON SUPERSTORM</Text>
                   <Text style={styles.carringtonLeadText}>
-                    A colossal solar eruption blasted directly at Earth—driving massive magnetic reconnection across our planet’s shield.
+                    An exceptional geomagnetic storm followed solar activity observed by Richard Carrington.
                   </Text>
                 </Animated.View>
 
@@ -1164,7 +1165,7 @@ export function MagnetismIntroAnimation({
                   ]}
                 >
                   <Text style={styles.carringtonExpandText}>
-                    Skies blazed with auroras across the entire globe. Electromagnetic induction drove such violent ground currents that telegraph stations burst into flames—and operators transmitted messages even with their batteries completely disconnected.
+                    Telegraph communications were disrupted across the world. Auroras reached unusually low latitudes, including Hawaii and Central America.
                   </Text>
                 </Animated.View>
               </Animated.View>
@@ -1186,7 +1187,7 @@ export function MagnetismIntroAnimation({
                       stageIdx >= 5 && styles.modernHeadlineCompact,
                     ]}
                   >
-                    If this were to happen today, the consequences would be unimaginable.
+                    Severe space weather can disrupt services we depend on.
                   </Text>
                   <Text
                     style={[
@@ -1194,7 +1195,7 @@ export function MagnetismIntroAnimation({
                       stageIdx >= 5 && styles.modernSubheadlineCompact,
                     ]}
                   >
-                    Every microelectronic chip on Earth would fry instantly.
+                    Power grids, satellites, radio and navigation can be affected.
                   </Text>
 
                   {/* INSIGHTFUL TEXT BELOW THE STATEMENT & ABOVE THE SQUARES */}
@@ -1210,7 +1211,7 @@ export function MagnetismIntroAnimation({
                         stageIdx >= 5 && styles.microprocessorInsightTextCompact,
                       ]}
                     >
-                      Almost everything electronic now has a microprocessor inside—from satellites, cars, and smartphones to power grids, water pumps, hospitals, and AI. When induced currents melt those microscopic silicon gates, modern civilization stops cold.
+                      Extreme geomagnetic storms can damage high-voltage transformers. Satellite and ionospheric disturbances can affect navigation and communications. These stylized effects illustrate service risks, not predicted damage to consumer devices.
                     </Text>
                   </View>
                 </Animated.View>
@@ -1296,10 +1297,10 @@ export function MagnetismIntroAnimation({
                             ]}
                           >
                             {state === 'ONLINE'
-                              ? '● ONLINE'
+                              ? '● SERVICE'
                               : state === 'BROWNOUT'
-                                ? '⚡ SPARKING'
-                                : '✕ FRIED'}
+                                ? '⚠ DISRUPTION'
+                                : '◌ UNAVAILABLE'}
                           </Text>
                         </View>
                       </Animated.View>
@@ -1312,6 +1313,10 @@ export function MagnetismIntroAnimation({
 
           {/* SUBTLE BOTTOM TAP PROMPT */}
           <View style={styles.bottomFooter}>
+            <Text style={[styles.tapPrompt, { fontSize: 10, marginBottom: 6 }]}
+              onPress={(event) => { event.stopPropagation(); void Linking.openURL('https://www.spaceweather.gov/impacts'); }}>
+              Conceptual animation · not an event reconstruction. Source: NOAA impacts ↗
+            </Text>
             <View style={styles.dotsRow}>
               {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <View

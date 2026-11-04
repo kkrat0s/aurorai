@@ -1,708 +1,230 @@
 /**
- * AuroraSense Magnetic Disturbance Classifier & Universal Fingerprint Database.
- *
- * Teaches users what magnetic fields are, how Earth's geomagnetic field interacts
- * with solar wind reconnection, and how AI analyzes multi-axis sensor physics
- * (gradient, rate of change dB/dt, polarization, AC switching jitter, steadiness)
- * to guestimate whether an unseen field is a human hand, smartwatch, laptop,
- * charging cable induction, or desk steel.
- *
- * Units: microtesla (µT); 1 µT = 1,000 nT.
- * Frame: DEVICE frame.
+ * Local magnetic pattern matching, not object identification or storm detection.
+ * Device-frame µT, monotonic milliseconds. Scores are uncalibrated similarities.
+ * Versioned engineering gates below were fixed before the added adversarial tests.
  */
-
-export type DisturbanceClassId =
-  | 'CLEAN_GEOMAGNETIC_BASELINE'
-  | 'GEOMAGNETIC_SOLAR_DISTURBANCE'
-  | 'HUMAN_HAND_GESTURE'
-  | 'SMARTWATCH_OR_MAGNET'
-  | 'CHARGING_CABLE_INDUCTION'
-  | 'LAPTOP_OR_COMPUTER'
-  | 'STRUCTURAL_METALLIC_MASS';
-
+export const FINGERPRINT_PROTOCOL_VERSION = 'local-pattern-2.0.0';
+export const FINGERPRINT_POLICY = Object.freeze({minSamples:8,minDurationMs:400,maxSamples:5000,maxGapMs:1000,maxMatchDistance:0.7,ambiguityMargin:0.15,maxProfiles:200});
+export type DisturbanceClassId = 'CLEAN_GEOMAGNETIC_BASELINE' | 'GEOMAGNETIC_SOLAR_DISTURBANCE' | 'HUMAN_HAND_GESTURE' | 'SMARTWATCH_OR_MAGNET' | 'CHARGING_CABLE_INDUCTION' | 'LAPTOP_OR_COMPUTER' | 'STRUCTURAL_METALLIC_MASS' | 'UNKNOWN_UNCLASSIFIED';
 export interface DisturbanceClassMetadata {
-  id: DisturbanceClassId;
-  name: string;
-  shortLabel: string;
-  color: string;
-  icon: string;
-  typicalDeltaMicroT: [number, number]; // [min, max]
-  typicalDeltaNanoT: [number, number];
-  rateOfChangeRangeMicroTPerSec: [number, number];
-  primaryMechanism: string;
-  howAiGuesses: string;
-  physicsExplanation: string;
-  solarStormComparison: string;
-  mitigationAdvice: string;
+  id: DisturbanceClassId; name:string; shortLabel:string; color:string; icon:string;
+  /** No empirical per-object range or detection limit has been established. */
+  typicalDeltaMicroT:null; typicalDeltaNanoT:null; rateOfChangeRangeMicroTPerSec:null;
+  primaryMechanism:string; howAiGuesses:string; physicsExplanation:string; solarStormComparison:string; mitigationAdvice:string;
 }
-
 export interface SpaceWeatherScaleTier {
-  noaaScale: 'G0' | 'G1' | 'G2' | 'G3' | 'G4' | 'G5';
-  name: string;
-  groundPerturbationNanoT: [number, number];
-  kpIndex: string;
-  phoneDetectability: string;
-  scientificDescription: string;
+  noaaScale:'G0'|'G1'|'G2'|'G3'|'G4'|'G5'; name:string; groundPerturbationNanoT:null; kpIndex:string; phoneDetectability:string; scientificDescription:string;
 }
-
-export const SPACE_WEATHER_GROUND_SCALES: SpaceWeatherScaleTier[] = [
-  {
-    noaaScale: 'G0',
-    name: 'Quiet Geomagnetic Background',
-    groundPerturbationNanoT: [0, 30],
-    kpIndex: 'Kp 0–3',
-    phoneDetectability: 'Below phone Hall sensor thermal noise floor (~100–150 nT).',
-    scientificDescription: 'Undisturbed Earth core dynamo field with minimal solar wind coupling.',
-  },
-  {
-    noaaScale: 'G1',
-    name: 'Minor Geomagnetic Storm',
-    groundPerturbationNanoT: [30, 60],
-    kpIndex: 'Kp 5',
-    phoneDetectability: 'Marginal on phone; requires multi-minute averaging on motionless surface.',
-    scientificDescription: 'Weak coronal hole high-speed stream coupling at magnetopause.',
-  },
-  {
-    noaaScale: 'G2',
-    name: 'Moderate Geomagnetic Storm',
-    groundPerturbationNanoT: [60, 120],
-    kpIndex: 'Kp 6',
-    phoneDetectability: 'Detectability threshold: distinguishable from phone sensor noise with quiet baseline.',
-    scientificDescription: 'Moderate CME impact driving sub-auroral electrojet intensifications.',
-  },
-  {
-    noaaScale: 'G3',
-    name: 'Strong Geomagnetic Storm',
-    groundPerturbationNanoT: [120, 250],
-    kpIndex: 'Kp 7',
-    phoneDetectability: 'Clearly detectable above phone noise floor (~120–250 nT) on windowsill/desk.',
-    scientificDescription: 'Strong southward IMF (Bz < -10 nT) driving major magnetospheric reconnection.',
-  },
-  {
-    noaaScale: 'G4',
-    name: 'Severe Geomagnetic Storm',
-    groundPerturbationNanoT: [250, 500],
-    kpIndex: 'Kp 8',
-    phoneDetectability: 'Strong signal on phone sensor (+250 to +500 nT); easily resolved above baseline.',
-    scientificDescription: 'Massive fast CME compressions; aurora visible at mid-latitudes (e.g. 45°–50°N).',
-  },
-  {
-    noaaScale: 'G5',
-    name: 'Extreme Geomagnetic Storm (May 2024 Event)',
-    groundPerturbationNanoT: [500, 1000],
-    kpIndex: 'Kp 9',
-    phoneDetectability: 'Massive excursion (+500 to +1,000+ nT); dominates local geomagnetic background.',
-    scientificDescription: 'Historic super-storm (e.g. May 10–12, 2024 Gannon storm); BOU ground station recorded up to 700 nT deflections.',
-  },
-];
-
-export const GRANITE_WINDOWSILL_PHYSICS = {
-  materialComposition: 'Granite igneous rock containing 1–5% magnetite (Fe3O4), ilmenite, and iron-biotite.',
-  staticPermeabilityOffsetNt: [100, 450],
-  windowSillAdvantage:
-    'Window sills are physically isolated from indoor electromagnetic noise (laptop VRMs, AC power bricks, and floor rebar), providing an optimal line-of-sight toward open space.',
-  zeroCalibrationProtocol:
-    'Place phone completely motionless on the granite sill, step back, and press ↺ ZERO. This subtracts the granite’s static remanent magnetic offset, calibrating the sensor to measure dynamic space weather perturbations.',
+export const SPACE_WEATHER_GROUND_SCALES:SpaceWeatherScaleTier[] = [
+  ['G0','Below storm scale','Kp < 5'],['G1','Minor geomagnetic storm','Kp 5'],['G2','Moderate geomagnetic storm','Kp 6'],['G3','Strong geomagnetic storm','Kp 7'],['G4','Severe geomagnetic storm','Kp 8, including 9−'],['G5','Extreme geomagnetic storm','Kp 9'],
+].map(([noaaScale,name,kpIndex])=>({noaaScale:noaaScale as SpaceWeatherScaleTier['noaaScale'],name,kpIndex,groundPerturbationNanoT:null,phoneDetectability:'Not established for this phone. Requires measured noise and synchronized references.',scientificDescription:'NOAA G levels are based on planetary Kp. They do not specify a universal local nT amplitude, cause or phone sensitivity.'}));
+export const GRANITE_WINDOWSILL_PHYSICS={
+  materialComposition:'Stone composition and remanent magnetization vary; the surface has not been characterized.',
+  staticPermeabilityOffsetNt:null,
+  windowSillAdvantage:'A window does not shield magnetic interference or provide a magnetic line-of-sight advantage. Check nearby metal, power cables, electronics and temperature changes.',
+  zeroCalibrationProtocol:'A stationary zero subtracts a local offset for display. It does not calibrate the sensor or separate drift, local fields and geomagnetic variations.',
 };
-
-export const UNIVERSAL_FINGERPRINT_DATABASE: Record<DisturbanceClassId, DisturbanceClassMetadata> = {
-  CLEAN_GEOMAGNETIC_BASELINE: {
-    id: 'CLEAN_GEOMAGNETIC_BASELINE',
-    name: 'Quiet Earth Geomagnetic Baseline',
-    shortLabel: 'Quiet Baseline',
-    color: '#68edc3',
-    icon: '🌍',
-    typicalDeltaMicroT: [0.0, 0.28],
-    typicalDeltaNanoT: [0, 280],
-    rateOfChangeRangeMicroTPerSec: [0.0, 0.35],
-    primaryMechanism: "Earth's core dynamo field resting undisturbed.",
-    howAiGuesses:
-      'Zero local gradient: Flat, quiet 3-axis trajectory with deviation below 250 nT and near-zero jitter.',
-    physicsExplanation:
-      "The sensor measures Earth's ambient dipolar magnetic field (approx. 30–60 µT), generated 3,000 km below ground by convection in Earth's molten iron outer core. Without local interference, field deviations remain below 250 nT.",
-    solarStormComparison:
-      "This is the calm state needed to detect real space weather. Earth's ionospheric response to solar wind reconnection is 50–500 nT; only an undisturbed sensor can isolate it.",
-    mitigationAdvice:
-      'Optimal observation condition. Keep phone resting still on a non-magnetic wooden or plastic surface.',
-  },
-  GEOMAGNETIC_SOLAR_DISTURBANCE: {
-    id: 'GEOMAGNETIC_SOLAR_DISTURBANCE',
-    name: 'Candidate Earth Reconnection / Solar Storm',
-    shortLabel: 'Solar Storm Event',
-    color: '#00e5ff',
-    icon: '☀️',
-    typicalDeltaMicroT: [0.06, 0.60],
-    typicalDeltaNanoT: [60, 600],
-    rateOfChangeRangeMicroTPerSec: [0.001, 0.22],
-    primaryMechanism:
-      'Ionospheric Hall & Birkeland field-aligned currents driven by solar wind magnetopause magnetic reconnection.',
-    howAiGuesses:
-      'Stationary ultra-slow scalar perturbation (60–600 nT, dB/dt < 0.22 µT/s) with hands off and zero electronic switching jitter. Matches G2–G5 geomagnetic storm signature.',
-    physicsExplanation:
-      'When southward interplanetary magnetic field (Bz < 0) reconnects with Earth’s dayside magnetopause, solar plasma injects into the polar cusps. This intensifies auroral electrojets at 100 km altitude, producing ground-level magnetic perturbations of 50 to 600+ nT over minutes to hours.',
-    solarStormComparison:
-      'This IS the target space weather phenomenon! G1 storms produce 20–50 nT; G3 storms reach 100–200 nT; severe G4/G5 storms (like May 10, 2024) exceed 400–800 nT.',
-    mitigationAdvice:
-      'Keep the phone motionless on a non-magnetic or zeroed granite surface. A single phone cannot confirm a storm alone—cross-check against USGS Boulder observatory (BOU) and independent regional phones.',
-  },
-  HUMAN_HAND_GESTURE: {
-    id: 'HUMAN_HAND_GESTURE',
-    name: 'Human Hand / Body Proximity',
-    shortLabel: 'Human Hand',
-    color: '#ffd58c',
-    icon: '🖐️',
-    typicalDeltaMicroT: [0.4, 3.8],
-    typicalDeltaNanoT: [400, 3800],
-    rateOfChangeRangeMicroTPerSec: [0.3, 4.5],
-    primaryMechanism: 'Diamagnetic tissue displacement, static field shift, and micro-tilt.',
-    howAiGuesses:
-      'Smooth sinusoidal dynamics: Moderate delta (0.5–3.5 µT), low rate of change (< 4.5 µT/s), and distributed multi-axis projection with natural physiological tremor.',
-    physicsExplanation:
-      'Human tissue is mildly diamagnetic (repels magnetic fields slightly due to water content) and carries electrostatic surface charges. Moving your hand also subtly distorts the local field and micro-tilts the phone, rotating Earth’s 50,000 nT field vector against the phone’s axes.',
-    solarStormComparison:
-      'A simple hand wave creates 500–3,500 nT of disturbance—roughly 5x to 20x LARGER than a moderate geomagnetic solar storm (100–250 nT)!',
-    mitigationAdvice:
-      'Step back 1–2 feet from the phone during real observation sessions so your body does not contaminate data.',
-  },
-  SMARTWATCH_OR_MAGNET: {
-    id: 'SMARTWATCH_OR_MAGNET',
-    name: 'Smartwatch / Neodymium Magnet',
-    shortLabel: 'Smartwatch / Magnet',
-    color: '#f06292',
-    icon: '⌚',
-    typicalDeltaMicroT: [4.0, 60.0],
-    typicalDeltaNanoT: [4000, 60000],
-    rateOfChangeRangeMicroTPerSec: [6.0, 90.0],
-    primaryMechanism: 'Permanent ferromagnetic dipole (Milanese clasp, speaker drivers, charging ring).',
-    howAiGuesses:
-      'Steep 1/r³ dipole gradient: Intense localized field spike (> 4 µT) with rapid rate of change (> 6 µT/s) and strong single-axis polarization.',
-    physicsExplanation:
-      'Smartwatches contain rare-earth neodymium speaker magnets and magnetic Milanese straps; rings and keys contain iron, cobalt, or nickel. They act as intense point dipoles whose magnetic force falls off with the cube of distance (1/r³).',
-    solarStormComparison:
-      'A smartwatch held near the phone creates 10,000–50,000 nT of local field—over 100x STRONGER than the strongest G5 geomagnetic storm recorded in decades!',
-    mitigationAdvice:
-      'Remove all watches, rings, jewelry, and keychains before setting up an observation.',
-  },
-  CHARGING_CABLE_INDUCTION: {
-    id: 'CHARGING_CABLE_INDUCTION',
-    name: 'Charging Cable / Induction',
-    shortLabel: 'Charging Cable',
-    color: '#ffb74d',
-    icon: '🔌',
-    typicalDeltaMicroT: [2.5, 35.0],
-    typicalDeltaNanoT: [2500, 35000],
-    rateOfChangeRangeMicroTPerSec: [1.0, 30.0],
-    primaryMechanism: "Ampère's law DC current flow (B = µ₀I / 2πr) plus power supply switching ripple.",
-    howAiGuesses:
-      'Biot-Savart cylindrical symmetry: Persistent elevated DC offset with high-frequency switching jitter from the charger transformer.',
-    physicsExplanation:
-      "Electric current flowing through a USB-C or MagSafe charging cable generates a circular magnetic field proportional to current (Ampère's law). Fast-charging bricks also induce switching ripple and inductive harmonics.",
-    solarStormComparison:
-      'Charging cables generate continuous artificial fields of 3,000–25,000 nT, swamping any natural ionospheric solar wind reconnection signature.',
-    mitigationAdvice:
-      'Unplug charging cables and keep the phone running on internal battery during 10-minute observations.',
-  },
-  LAPTOP_OR_COMPUTER: {
-    id: 'LAPTOP_OR_COMPUTER',
-    name: 'Laptop / Computer Nearby',
-    shortLabel: 'Laptop / PC',
-    color: '#ba68c8',
-    icon: '💻',
-    typicalDeltaMicroT: [3.5, 45.0],
-    typicalDeltaNanoT: [3500, 45000],
-    rateOfChangeRangeMicroTPerSec: [0.5, 25.0],
-    primaryMechanism: 'Electromagnetic induction from GPU/CPU VRMs, display inverters, and cooling fan motors.',
-    howAiGuesses:
-      'Stationary high-jitter footprint: Steady elevated field (> 3 µT) accompanied by high-frequency AC ripple without macro physical phone motion.',
-    physicsExplanation:
-      'Laptops and monitors contain high-frequency switching voltage regulator modules (VRMs), inductive coils, and magnetic fan motors. They emit complex multi-frequency electromagnetic radiation and localized magnetic fields.',
-    solarStormComparison:
-      'A neighboring computer creates 4,000–30,000 nT of steady magnetic bias, making geomagnetic storm detection impossible.',
-    mitigationAdvice:
-      'Place the phone at least 3 feet (1 meter) away from laptops, external monitors, and desktop computers.',
-  },
-  STRUCTURAL_METALLIC_MASS: {
-    id: 'STRUCTURAL_METALLIC_MASS',
-    name: 'Steel Desk Frame / Floor Rebar',
-    shortLabel: 'Desk Steel',
-    color: '#80cbc4',
-    icon: '🏢',
-    typicalDeltaMicroT: [2.0, 25.0],
-    typicalDeltaNanoT: [2000, 25000],
-    rateOfChangeRangeMicroTPerSec: [0.05, 3.0],
-    primaryMechanism: 'Static spatial magnetic permeability gradient in structural building steel.',
-    howAiGuesses:
-      'Zero-jitter stationary bias: Steady deviation that is completely motionless when untouched, changing only with physical phone sliding across the desk.',
-    physicsExplanation:
-      'Office desks with steel legs and concrete floors with steel rebar distort Earth’s field lines into a spatial gradient. The reading is completely steady until the phone is nudged or translated across the desk.',
-    solarStormComparison:
-      'Structural metal causes a constant baseline offset. Sliding the phone even 2 inches mimics a fake solar storm sudden impulse.',
-    mitigationAdvice:
-      'Elevate the phone on a wooden, cardboard, or plastic riser away from steel table legs.',
-  },
-};
-
-export interface MagneticSample {
-  x: number;
-  y: number;
-  z: number;
-  timestampMs: number;
+function metadata(id:DisturbanceClassId,name:string,shortLabel:string,color:string,icon:string,mechanism:string):DisturbanceClassMetadata {
+  return {id,name,shortLabel,color,icon,typicalDeltaMicroT:null,typicalDeltaNanoT:null,rateOfChangeRangeMicroTPerSec:null,primaryMechanism:mechanism,
+    howAiGuesses:'Bounded local feature comparison and optional user-labeled examples. Similar waveforms can have different causes; the match score is not a calibrated probability.',
+    physicsExplanation:mechanism,
+    solarStormComparison:'No fixed local amplitude maps to a NOAA G level. A single phone cannot identify a storm or magnetic reconnection.',
+    mitigationAdvice:'Repeat a controlled present/absent comparison with a stationary phone; retain raw data, context and an independent holdout recording.'};
 }
-
+export const UNIVERSAL_FINGERPRINT_DATABASE:Record<DisturbanceClassId,DisturbanceClassMetadata>={
+  CLEAN_GEOMAGNETIC_BASELINE:metadata('CLEAN_GEOMAGNETIC_BASELINE','Quiet local trace','Quiet trace','#68edc3','🌍','Little variation relative to the selected baseline. A stable local magnetic offset can still be present.'),
+  GEOMAGNETIC_SOLAR_DISTURBANCE:metadata('GEOMAGNETIC_SOLAR_DISTURBANCE','Regional evidence required','Unverified regional cause','#00e5ff','☀️','This local pattern matcher cannot classify geomagnetic origin. Use synchronized professional and independent-site evidence.'),
+  HUMAN_HAND_GESTURE:metadata('HUMAN_HAND_GESTURE','Handling-associated variation','Handling candidate','#ffd58c','🖐️','Touch/motion can coincide with orientation changes, accessories or nearby magnetic objects. These samples do not identify tissue diamagnetism.'),
+  SMARTWATCH_OR_MAGNET:metadata('SMARTWATCH_OR_MAGNET','Nearby magnetic object candidate','Magnetic object','#f06292','⌚','A steep local gradient can be compatible with a nearby magnet or magnetized object; waveform alone cannot identify its make or type.'),
+  CHARGING_CABLE_INDUCTION:metadata('CHARGING_CABLE_INDUCTION','Charging-associated variation','Charging candidate','#ffb74d','🔌','Charging state is contextual evidence, not proof that a cable caused the field. A controlled charging on/off comparison is required.'),
+  LAPTOP_OR_COMPUTER:metadata('LAPTOP_OR_COMPUTER','User-labeled electronic object','Electronic object','#ba68c8','💻','Nearby electronics may contribute magnetic interference. Low-rate phone samples cannot resolve or identify a switching regulator from apparent jitter.'),
+  STRUCTURAL_METALLIC_MASS:metadata('STRUCTURAL_METALLIC_MASS','User-labeled structural object','Structural object','#80cbc4','🏢','Magnetized structural material can affect local fields. A steady offset alone does not identify steel or the supporting surface.'),
+  UNKNOWN_UNCLASSIFIED:metadata('UNKNOWN_UNCLASSIFIED','Unknown or ambiguous local source','Unknown source','#aeb9c8','❔','The available measurements do not uniquely identify a physical source. Record and label a controlled new example rather than forcing a known category.'),
+};
+export interface MagneticSample {x:number;y:number;z:number;timestampMs:number}
 export interface DisturbanceSignature {
-  deltaMicroT: number; // Current |B| - B_baseline
-  deltaNanoT: number;
-  peakDeltaMicroT: number;
-  rateOfChangeMicroTPerSec: number;
-  polarizationRatio: number; // Ratio of dominant axis variation to total variation
-  jitterRatio: number; // High frequency variance / gross trajectory
-  steadinessRatio: number; // 0.0 (erratic/moving) to 1.0 (steady plateau)
-  sampleCount: number;
-  durationMs: number;
+  deltaMicroT:number;deltaNanoT:number;peakDeltaMicroT:number;rateOfChangeMicroTPerSec:number;polarizationRatio:number;
+  /** Step roughness, not a frequency-domain or switching-frequency measurement. */
+  jitterRatio:number;steadinessRatio:number;sampleCount:number;durationMs:number;
+  actualHz?:number;scalarRangeMicroT?:number;
 }
-
-export type DeviceMotionState = 'STANDSTILL' | 'HAND_TREMOR' | 'ACTIVE_MOTION';
-export type DeviceBatteryState = 'CHARGING' | 'UNPLUGGED' | 'FULL' | 'UNKNOWN';
-
+export type DeviceMotionState='STANDSTILL'|'HAND_TREMOR'|'ACTIVE_MOTION'|'UNKNOWN';
+export type DeviceBatteryState='CHARGING'|'UNPLUGGED'|'FULL'|'UNKNOWN';
 export interface DevicePhysicalContext {
-  /** Accelerometer motion status: true if resting completely motionless on a table/surface */
-  isStandstill: boolean;
-  /** Granular motion classification: STANDSTILL, HAND_TREMOR (held in hand), or ACTIVE_MOTION */
-  motionState: DeviceMotionState;
-  /** Accelerometer norm variance (g) across rolling buffer */
-  accelVarianceG?: number;
-  /** True if phone is resting flat face-up or face-down (|az| > 0.88g) */
-  isFlatOnSurface?: boolean;
-
-  /** True if user's finger or hand is actively touching the capacitive touchscreen */
-  isScreenTouched: boolean;
-  /** Milliseconds since the last capacitive screen touch ended */
-  timeSinceLastTouchMs?: number;
-
-  /** True if phone is connected to USB-C cable or Qi wireless charging pad */
-  isCharging?: boolean;
-  /** Battery hardware state */
-  batteryState?: DeviceBatteryState;
-
-  /** Ambient illuminance lux if light sensor available */
-  ambientLux?: number | null;
+  isStandstill:boolean;motionState:DeviceMotionState;accelVarianceG?:number|null;isFlatOnSurface?:boolean;
+  isScreenTouched:boolean;timeSinceLastTouchMs?:number;isCharging?:boolean;batteryState?:DeviceBatteryState;ambientLux?:number|null;
+  /** Optional local model/setup identifier; do not use a personal device serial. */
+  sensorDeviceKey?:string;
+  /** Local, nonidentifying acquisition-run nonce; monotonic clocks restart between runs. */
+  acquisitionRunId?:string;
+  /** Distinguishes measured recordings from explicit demonstrations. */
+  sampleKind?:'MEASURED'|'SYNTHETIC';
 }
-
+export interface LearningMatch {profileId:string;label:string;distance:number;independentExamples:number;validation:'UNVALIDATED_USER_LABEL'}
 export interface DisturbanceClassificationResult {
-  predictedClass: DisturbanceClassId;
-  confidence: number; // 0.0 to 1.0
-  scores: Record<DisturbanceClassId, number>;
-  metadata: DisturbanceClassMetadata;
-  signature: DisturbanceSignature;
-  solarStormSignalRatio: number; // Ratio compared to a 100 nT solar storm
-  fingerprintHash: string;
-  aiReasoning: string;
-  context?: DevicePhysicalContext;
+  predictedClass:DisturbanceClassId;
+  /** Compatibility field: uncalibrated match score, never posterior probability. */
+  confidence:number;scores:Record<DisturbanceClassId,number>;metadata:DisturbanceClassMetadata;signature:DisturbanceSignature;
+  /** Compatibility field: amplitude / 100 nT reference, not storm severity. */
+  solarStormSignalRatio:number;fingerprintHash:string;aiReasoning:string;context?:DevicePhysicalContext;
+  protocolVersion:string;confidenceKind:'UNCALIBRATED_MATCH_SCORE';evidenceStatus:'INSUFFICIENT_DATA'|'HEURISTIC_ONLY'|'USER_LABELED_MATCH'|'UNKNOWN';
+  qualityIssues:string[];learningMatch:LearningMatch|null;trainable:boolean;
+  windowStartMs:number|null;windowEndMs:number|null;sourceWindowId:string;
 }
-
 export interface LearnedUserFingerprint {
-  id: string;
-  confirmedAtUtc: string;
-  objectClassId: DisturbanceClassId;
-  customLabel?: string;
-  signature: DisturbanceSignature;
-  userConfirmed: boolean;
+  id:string;confirmedAtUtc:string;objectClassId:DisturbanceClassId;customLabel?:string;signature:DisturbanceSignature;userConfirmed:boolean;
+  protocolVersion?:string;sourceWindowId?:string;windowStartMs?:number;windowEndMs?:number;context?:DevicePhysicalContext;
+  validation?:'UNVALIDATED_USER_LABEL';learningEligible?:boolean;
+}
+function inspectSamples(samples:MagneticSample[],baseline:number):string[] {
+  const issues:string[]=[];
+  if(!Number.isFinite(baseline)||baseline<=0||baseline>2000)issues.push('INVALID_BASELINE');
+  if(samples.length<FINGERPRINT_POLICY.minSamples)issues.push('TOO_FEW_SAMPLES');
+  if(samples.length>FINGERPRINT_POLICY.maxSamples)issues.push('TOO_MANY_SAMPLES');
+  let previous:number|null=null;
+  for(const s of samples){
+    if(![s.x,s.y,s.z,s.timestampMs].every(Number.isFinite)){issues.push('NONFINITE_SAMPLE');break;}
+    const field=Math.hypot(s.x,s.y,s.z);if(field<1||field>2000)issues.push('FIELD_OUT_OF_RANGE');
+    if(previous!==null){if(s.timestampMs<=previous)issues.push('NONINCREASING_TIME');else if(s.timestampMs-previous>FINGERPRINT_POLICY.maxGapMs)issues.push('GAP_IN_WINDOW');}
+    previous=s.timestampMs;
+  }
+  if(samples.length>1&&samples.at(-1)!.timestampMs-samples[0].timestampMs<FINGERPRINT_POLICY.minDurationMs)issues.push('WINDOW_TOO_SHORT');
+  return [...new Set(issues)];
+}
+function emptySignature():DisturbanceSignature{return{deltaMicroT:0,deltaNanoT:0,peakDeltaMicroT:0,rateOfChangeMicroTPerSec:0,polarizationRatio:0,jitterRatio:0,steadinessRatio:0,sampleCount:0,durationMs:0,actualHz:0,scalarRangeMicroT:0};}
+export function extractDisturbanceSignature(samples:MagneticSample[],baselineMagMicroT:number):DisturbanceSignature {
+  if(!samples.length)return emptySignature();
+  const invalid=inspectSamples(samples,baselineMagMicroT).filter(x=>!['TOO_FEW_SAMPLES','WINDOW_TOO_SHORT'].includes(x));
+  if(invalid.length)throw new RangeError(`Invalid magnetic window: ${invalid.join(', ')}`);
+  const mags=samples.map(s=>Math.hypot(s.x,s.y,s.z));const first=samples[0];const last=samples.at(-1)!;
+  const peak=Math.max(...mags.map(m=>Math.abs(m-baselineMagMicroT)));
+  let maxRate=0,stepSum=0;const axisVariation=[0,0,0];
+  for(let i=1;i<samples.length;i++){
+    const difference=Math.abs(mags[i]-mags[i-1]);stepSum+=difference;
+    maxRate=Math.max(maxRate,difference/((samples[i].timestampMs-samples[i-1].timestampMs)/1000));
+    axisVariation[0]+=Math.abs(samples[i].x-first.x);axisVariation[1]+=Math.abs(samples[i].y-first.y);axisVariation[2]+=Math.abs(samples[i].z-first.z);
+  }
+  const total=axisVariation.reduce((a,b)=>a+b,0);const mean=mags.reduce((a,b)=>a+b,0)/mags.length;
+  const sd=Math.sqrt(mags.reduce((a,m)=>a+(m-mean)**2,0)/mags.length);const duration=last.timestampMs-first.timestampMs;
+  return{deltaMicroT:mags.at(-1)!-baselineMagMicroT,deltaNanoT:(mags.at(-1)!-baselineMagMicroT)*1000,peakDeltaMicroT:peak,
+    rateOfChangeMicroTPerSec:maxRate,polarizationRatio:total?Math.max(...axisVariation)/total:0,
+    jitterRatio:Math.min(1,stepSum/Math.max(1,samples.length-1)/(Math.abs(mags.at(-1)!-mags[0])+.05)),
+    steadinessRatio:Math.max(0,Math.min(1,1-sd/(peak+.1))),sampleCount:samples.length,durationMs:duration,
+    actualHz:duration>0?(samples.length-1)*1000/duration:0,scalarRangeMicroT:Math.max(...mags)-Math.min(...mags)};
+}
+function sanitizeLabel(value:string):string{return Array.from(value).filter(char=>char.charCodeAt(0)>=32&&char.charCodeAt(0)!==127).join('').trim().slice(0,80);}
+function hash(value:string):string {let h=2166136261;for(let i=0;i<value.length;i++){h^=value.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0).toString(16).padStart(8,'0');}
+function featureVector(s:DisturbanceSignature):number[]{return[Math.log1p(s.peakDeltaMicroT),Math.log1p(s.rateOfChangeMicroTPerSec),s.polarizationRatio,s.jitterRatio,s.steadinessRatio,Math.log1p(s.scalarRangeMicroT??0)];}
+function featureDistance(a:DisturbanceSignature,b:DisturbanceSignature):number {
+  const va=featureVector(a),vb=featureVector(b);const scales=[.6,.8,.3,.3,.3,.6];
+  return Math.sqrt(va.reduce((sum,value,i)=>sum+((value-vb[i])/scales[i])**2,0)/va.length);
+}
+function validProfile(fp:LearnedUserFingerprint):boolean {
+  return !!fp&&typeof fp.id==='string'&&fp.id.length<=200&&typeof fp.confirmedAtUtc==='string'&&Number.isFinite(Date.parse(fp.confirmedAtUtc))&&
+    (fp.customLabel===undefined||(typeof fp.customLabel==='string'&&fp.customLabel.length<=80))&&fp.userConfirmed===true&&fp.learningEligible===true&&fp.protocolVersion===FINGERPRINT_PROTOCOL_VERSION&&
+    Object.hasOwn(UNIVERSAL_FINGERPRINT_DATABASE,fp.objectClassId)&&fp.objectClassId!=='GEOMAGNETIC_SOLAR_DISTURBANCE'&&
+    typeof fp.sourceWindowId==='string'&&Number.isFinite(fp.windowStartMs)&&Number.isFinite(fp.windowEndMs)&&fp.windowEndMs!>fp.windowStartMs!&&
+    !!fp.signature&&['deltaMicroT','deltaNanoT','peakDeltaMicroT','rateOfChangeMicroTPerSec','polarizationRatio','jitterRatio','steadinessRatio','sampleCount','durationMs','actualHz','scalarRangeMicroT'].every(k=>Number.isFinite((fp.signature as unknown as Record<string,unknown>)[k]))&&fp.signature.sampleCount>=FINGERPRINT_POLICY.minSamples&&
+    fp.signature.durationMs>=FINGERPRINT_POLICY.minDurationMs&&fp.signature.peakDeltaMicroT>=0&&fp.signature.rateOfChangeMicroTPerSec>=0&&
+    [fp.signature.polarizationRatio,fp.signature.jitterRatio,fp.signature.steadinessRatio].every(v=>v>=0&&v<=1);
+}
+function compatibleContext(a:DevicePhysicalContext|undefined,b:DevicePhysicalContext):boolean {
+  if((a?.sensorDeviceKey??'local-unverified')!==(b.sensorDeviceKey??'local-unverified'))return false;
+  if((a?.sampleKind??'MEASURED')!==(b.sampleKind??'MEASURED'))return false;
+  if(a?.motionState!==b.motionState||a?.isScreenTouched!==b.isScreenTouched)return false;
+  if(a?.batteryState!==b.batteryState)return false;
+  return true;
+}
+function findLearnedMatch(sig:DisturbanceSignature,start:number,end:number,sourceWindowId:string,profiles:LearnedUserFingerprint[],context:DevicePhysicalContext):{match:LearningMatch;classId:DisturbanceClassId}|null {
+  const seen=new Set<string>();const candidates:Array<{fp:LearnedUserFingerprint;distance:number;label:string}>=[];
+  for(const fp of profiles.slice(0,FINGERPRINT_POLICY.maxProfiles)){
+    if(!validProfile(fp))continue;
+    const duplicateKey=`${fp.sourceWindowId}:${fp.objectClassId}:${(fp.customLabel??'').toLowerCase()}`;
+    if(seen.has(duplicateKey))continue;seen.add(duplicateKey);
+    // Training-window reuse and overlapping rolling windows are not independent tests.
+    const sameClock=!fp.context?.acquisitionRunId||!context.acquisitionRunId||fp.context.acquisitionRunId===context.acquisitionRunId;
+    if(fp.sourceWindowId===sourceWindowId||(sameClock&&!(end<fp.windowStartMs!||start>fp.windowEndMs!)))continue;
+    if(!compatibleContext(fp.context,context))continue;
+    const cadence=sig.actualHz??0,profileCadence=fp.signature.actualHz??0;
+    if(!cadence||!profileCadence||cadence/profileCadence<.5||cadence/profileCadence>2)continue;
+    const distance=featureDistance(sig,fp.signature);
+    if(distance>FINGERPRINT_POLICY.maxMatchDistance)continue;
+    const label=(fp.customLabel??UNIVERSAL_FINGERPRINT_DATABASE[fp.objectClassId].name).trim().slice(0,80);
+    candidates.push({fp,distance,label});
+  }
+  candidates.sort((a,b)=>a.distance-b.distance||a.fp.id.localeCompare(b.fp.id));const best=candidates[0];if(!best)return null;
+  const key=(c:{fp:LearnedUserFingerprint;label:string})=>`${c.fp.objectClassId}:${c.label.toLocaleLowerCase()}`;
+  const different=candidates.find(c=>key(c)!==key(best));
+  if(different&&different.distance-best.distance<FINGERPRINT_POLICY.ambiguityMargin)return null;
+  // Count non-overlapping examples only; repeated taps and shifted buffers add no support.
+  const lastEndByRun=new Map<string,number>();let independent=0;
+  for(const c of candidates.filter(c=>key(c)===key(best)).sort((a,b)=>a.fp.windowStartMs!-b.fp.windowStartMs!)){
+    const run=c.fp.context?.acquisitionRunId??'legacy-clock';const lastEnd=lastEndByRun.get(run)??-Infinity;
+    if(c.fp.windowStartMs!>lastEnd){independent++;lastEndByRun.set(run,c.fp.windowEndMs!);}
+  }
+  return{classId:best.fp.objectClassId,match:{profileId:best.fp.id,label:best.label,distance:best.distance,independentExamples:independent,validation:'UNVALIDATED_USER_LABEL'}};
+}
+export function classifyMagneticDisturbance(samples:MagneticSample[],baselineMagMicroT:number,userLearnedFingerprints:LearnedUserFingerprint[]=[],context?:Partial<DevicePhysicalContext>):DisturbanceClassificationResult {
+  const fullContext:DevicePhysicalContext={isStandstill:context?.isStandstill===true,motionState:context?.motionState??'UNKNOWN',isScreenTouched:context?.isScreenTouched===true,
+    ...context,batteryState:context?.batteryState??(context?.isCharging===true?'CHARGING':context?.isCharging===false?'UNPLUGGED':'UNKNOWN')};
+  const qualityIssues=inspectSamples(samples,baselineMagMicroT);
+  let signature=emptySignature();try{signature=extractDisturbanceSignature(samples,baselineMagMicroT);}catch{/* Invalid input is explicitly ineligible below. */}
+  const sourceWindowId=`window-${hash(JSON.stringify({run:fullContext.acquisitionRunId??'legacy-clock',samples}))}`;const scores=Object.fromEntries(Object.keys(UNIVERSAL_FINGERPRINT_DATABASE).map(k=>[k,0])) as Record<DisturbanceClassId,number>;
+  let predictedClass:DisturbanceClassId='UNKNOWN_UNCLASSIFIED',evidenceStatus:DisturbanceClassificationResult['evidenceStatus']='UNKNOWN',confidence=0,learningMatch:LearningMatch|null=null;
+  let aiReasoning='The local source is unknown. Similar magnetic patterns can arise from drift, motion, nearby objects or geomagnetic variation; this phone alone cannot distinguish them.';
+  const {peakDeltaMicroT:peak,rateOfChangeMicroTPerSec:rate,jitterRatio:jitter}=signature;
+  if(qualityIssues.length){evidenceStatus='INSUFFICIENT_DATA';aiReasoning=`Insufficient or invalid acquisition: ${qualityIssues.join(', ')}. Collect a continuous finite window before labeling a pattern.`;}
+  else{
+    const found=findLearnedMatch(signature,samples[0].timestampMs,samples.at(-1)!.timestampMs,sourceWindowId,userLearnedFingerprints,fullContext);
+    if(found){predictedClass=found.classId;learningMatch=found.match;confidence=Math.max(0,1-found.match.distance/FINGERPRINT_POLICY.maxMatchDistance);evidenceStatus='USER_LABELED_MATCH';
+      aiReasoning=`Resembles your label “${found.match.label}” from ${found.match.independentExamples} separate recording window(s), with matching recorded context. This is an unvalidated local example match, not verified object identity or measured accuracy.`;
+    }else{
+      if(peak<.2&&rate<.4&&fullContext.motionState==='STANDSTILL'&&!fullContext.isScreenTouched){predictedClass='CLEAN_GEOMAGNETIC_BASELINE';confidence=.65;aiReasoning=`Small local variation (${Math.round(peak*1000)} nT) in this window. Quiet does not establish calibration, absence of interference or geomagnetic origin.`;}
+      else if(fullContext.isCharging===true&&peak>=2){predictedClass='CHARGING_CABLE_INDUCTION';confidence=.55;aiReasoning='An elevated local field coincides with reported charging. Charging is a candidate confound; repeat unplugged before attributing the field to a cable or charger.';}
+      else if(peak>=3.5&&rate>4.5&&jitter<.45){predictedClass='SMARTWATCH_OR_MAGNET';confidence=.55;aiReasoning='A rapid local field change is compatible with a nearby magnetic object or movement. It cannot identify a smartwatch, magnet type or dipole distance from this trace.';}
+      else if(peak>=.35&&peak<=8&&(fullContext.isScreenTouched||fullContext.motionState==='HAND_TREMOR'||fullContext.motionState==='ACTIVE_MOTION')){predictedClass='HUMAN_HAND_GESTURE';confidence=.5;aiReasoning='Magnetic variation coincides with recorded touch or movement. Handling, orientation, accessories and other local sources remain confounded; human tissue is not identified as the source.';}
+      if(predictedClass!=='UNKNOWN_UNCLASSIFIED')evidenceStatus='HEURISTIC_ONLY';
+    }
+  }
+  scores[predictedClass]=confidence;scores.UNKNOWN_UNCLASSIFIED=predictedClass==='UNKNOWN_UNCLASSIFIED'?1:1-confidence;
+  // Keep raw features and screening outcomes; a touch overlapping this window only blocks teaching.
+  const touchAge=fullContext.timeSinceLastTouchMs;
+  const recentTouch=fullContext.isScreenTouched||(typeof touchAge==='number'&&Number.isFinite(touchAge)&&touchAge>=0&&touchAge<=signature.durationMs);
+  if(recentTouch){qualityIssues.push('RECENT_SCREEN_TOUCH');aiReasoning+=' Teaching is paused until the rolling window no longer overlaps the recorded screen interaction.';}
+  const meta=learningMatch?{...UNIVERSAL_FINGERPRINT_DATABASE[predictedClass],name:`User label: ${learningMatch.label}`,shortLabel:learningMatch.label}:UNIVERSAL_FINGERPRINT_DATABASE[predictedClass];
+  return{predictedClass,confidence,scores,metadata:meta,signature,solarStormSignalRatio:signature.peakDeltaMicroT/.1,
+    fingerprintHash:`fp-${hash(JSON.stringify(featureVector(signature)))}`,aiReasoning,context:fullContext,protocolVersion:FINGERPRINT_PROTOCOL_VERSION,
+    confidenceKind:'UNCALIBRATED_MATCH_SCORE',evidenceStatus,qualityIssues,learningMatch,trainable:qualityIssues.length===0,
+    windowStartMs:samples.length&&Number.isFinite(samples[0].timestampMs)?samples[0].timestampMs:null,
+    windowEndMs:samples.length&&Number.isFinite(samples.at(-1)!.timestampMs)?samples.at(-1)!.timestampMs:null,sourceWindowId};
+}
+/** Adds one explicit user label. Deduplication and holdout checks occur during matching. */
+export function createUserLearnedFingerprint(classification:DisturbanceClassificationResult,confirmedClassId:DisturbanceClassId,customLabel?:string):LearnedUserFingerprint {
+  const eligible=classification.trainable===true&&confirmedClassId!=='GEOMAGNETIC_SOLAR_DISTURBANCE'&&Object.hasOwn(UNIVERSAL_FINGERPRINT_DATABASE,confirmedClassId);
+  const label=sanitizeLabel(customLabel??UNIVERSAL_FINGERPRINT_DATABASE[confirmedClassId]?.name??'Unknown local object');
+  return{id:`learned-${classification.sourceWindowId}-${hash(`${confirmedClassId}:${label}`)}`,confirmedAtUtc:new Date().toISOString(),objectClassId:confirmedClassId,
+    customLabel:label,signature:{...classification.signature},userConfirmed:eligible,learningEligible:eligible,
+    protocolVersion:FINGERPRINT_PROTOCOL_VERSION,sourceWindowId:classification.sourceWindowId,
+    windowStartMs:classification.windowStartMs??undefined,windowEndMs:classification.windowEndMs??undefined,
+    context:classification.context?{...classification.context}:undefined,validation:'UNVALIDATED_USER_LABEL'};
 }
 
-/**
- * Computes statistical and spectral signature features from a rolling buffer of 3-axis samples.
- */
-export function extractDisturbanceSignature(
-  samples: MagneticSample[],
-  baselineMagMicroT: number
-): DisturbanceSignature {
-  if (samples.length === 0) {
-    return {
-      deltaMicroT: 0,
-      deltaNanoT: 0,
-      peakDeltaMicroT: 0,
-      rateOfChangeMicroTPerSec: 0,
-      polarizationRatio: 0,
-      jitterRatio: 0,
-      steadinessRatio: 0,
-      sampleCount: 0,
-      durationMs: 0,
-    };
+/** Restore only versioned, bounded, validated local examples; ignores legacy/corrupt imports. */
+export function parseLearnedFingerprints(value:unknown):LearnedUserFingerprint[] {
+  if(!Array.isArray(value))return [];
+  const parsed:LearnedUserFingerprint[]=[];const seen=new Set<string>();
+  for(const item of value.slice(0,FINGERPRINT_POLICY.maxProfiles)){
+    if(!item||typeof item!=='object'||!validProfile(item as LearnedUserFingerprint))continue;
+    const fp=item as LearnedUserFingerprint,c=fp.context;
+    if(!c||!['STANDSTILL','HAND_TREMOR','ACTIVE_MOTION','UNKNOWN'].includes(c.motionState)||typeof c.isStandstill!=='boolean'||typeof c.isScreenTouched!=='boolean')continue;
+    if(c.sensorDeviceKey!==undefined&&(typeof c.sensorDeviceKey!=='string'||c.sensorDeviceKey.length>120))continue;
+    if(c.acquisitionRunId!==undefined&&(typeof c.acquisitionRunId!=='string'||c.acquisitionRunId.length<1||c.acquisitionRunId.length>120))continue;
+    if(c.sampleKind!==undefined&&!['MEASURED','SYNTHETIC'].includes(c.sampleKind))continue;
+    if(c.batteryState!==undefined&&!['CHARGING','UNPLUGGED','FULL','UNKNOWN'].includes(c.batteryState))continue;
+    if(c.isCharging!==undefined&&typeof c.isCharging!=='boolean')continue;
+    if(seen.has(fp.id))continue;seen.add(fp.id);
+    const signature=Object.fromEntries(['deltaMicroT','deltaNanoT','peakDeltaMicroT','rateOfChangeMicroTPerSec','polarizationRatio','jitterRatio','steadinessRatio','sampleCount','durationMs','actualHz','scalarRangeMicroT'].map(k=>[k,(fp.signature as unknown as Record<string,number>)[k]])) as unknown as DisturbanceSignature;
+    parsed.push({id:fp.id,confirmedAtUtc:fp.confirmedAtUtc,objectClassId:fp.objectClassId,customLabel:fp.customLabel===undefined?undefined:sanitizeLabel(fp.customLabel),signature,userConfirmed:true,protocolVersion:FINGERPRINT_PROTOCOL_VERSION,sourceWindowId:fp.sourceWindowId,windowStartMs:fp.windowStartMs,windowEndMs:fp.windowEndMs,validation:'UNVALIDATED_USER_LABEL',learningEligible:true,context:{isStandstill:c.isStandstill,motionState:c.motionState,isScreenTouched:c.isScreenTouched,isCharging:c.isCharging,batteryState:c.batteryState??'UNKNOWN',sensorDeviceKey:c.sensorDeviceKey,acquisitionRunId:c.acquisitionRunId,sampleKind:c.sampleKind??'MEASURED'}});
   }
-
-  const latest = samples[samples.length - 1];
-  const latestMag = Math.sqrt(latest.x * latest.x + latest.y * latest.y + latest.z * latest.z);
-  const deltaMicroT = latestMag - baselineMagMicroT;
-
-  let peakDelta = Math.abs(deltaMicroT);
-  let maxRateOfChange = 0;
-  let totalDeltaX = 0;
-  let totalDeltaY = 0;
-  let totalDeltaZ = 0;
-
-  const firstMag = Math.sqrt(samples[0].x * samples[0].x + samples[0].y * samples[0].y + samples[0].z * samples[0].z);
-  let prevMag = firstMag;
-  let prevTime = samples[0].timestampMs;
-  let totalAbsDiffStep = 0;
-  let magSum = 0;
-
-  for (let i = 1; i < samples.length; i++) {
-    const s = samples[i];
-    const mag = Math.sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
-    magSum += mag;
-    const d = Math.abs(mag - baselineMagMicroT);
-    if (d > peakDelta) peakDelta = d;
-
-    const dt = Math.max(1, s.timestampMs - prevTime) / 1000;
-    const rate = Math.abs(mag - prevMag) / dt;
-    if (rate > maxRateOfChange) maxRateOfChange = rate;
-
-    totalAbsDiffStep += Math.abs(mag - prevMag);
-    totalDeltaX += Math.abs(s.x - samples[0].x);
-    totalDeltaY += Math.abs(s.y - samples[0].y);
-    totalDeltaZ += Math.abs(s.z - samples[0].z);
-
-    prevMag = mag;
-    prevTime = s.timestampMs;
-  }
-
-  const durationMs = Math.max(1, samples[samples.length - 1].timestampMs - samples[0].timestampMs);
-  const totalVecVar = totalDeltaX + totalDeltaY + totalDeltaZ + 1e-6;
-  const maxAxisVar = Math.max(totalDeltaX, totalDeltaY, totalDeltaZ);
-  const polarizationRatio = Math.min(1.0, maxAxisVar / totalVecVar);
-
-  const meanStepDiff = totalAbsDiffStep / Math.max(1, samples.length - 1);
-  const grossTraj = Math.abs(latestMag - firstMag) + 0.05;
-  const jitterRatio = Math.min(1.0, meanStepDiff / grossTraj);
-
-  // Steadiness ratio: how flat is the field across the window (steady plateau)
-  const meanMag = (magSum + firstMag) / samples.length;
-  let varianceSum = 0;
-  for (const s of samples) {
-    const mag = Math.sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
-    varianceSum += (mag - meanMag) * (mag - meanMag);
-  }
-  const variance = varianceSum / samples.length;
-  const steadinessRatio = Math.max(0, Math.min(1.0, 1.0 - Math.sqrt(variance) / (peakDelta + 0.1)));
-
-  return {
-    deltaMicroT,
-    deltaNanoT: Math.round(deltaMicroT * 1000),
-    peakDeltaMicroT: peakDelta,
-    rateOfChangeMicroTPerSec: maxRateOfChange,
-    polarizationRatio,
-    jitterRatio,
-    steadinessRatio,
-    sampleCount: samples.length,
-    durationMs,
-  };
-}
-
-/**
- * Universal classifier matching real-time phone magnetometer dynamics
- * against physical electrodynamics models of human body, ferromagnetic metals, and electronics.
- */
-export function classifyMagneticDisturbance(
-  samples: MagneticSample[],
-  baselineMagMicroT: number,
-  userLearnedFingerprints: LearnedUserFingerprint[] = [],
-  context?: Partial<DevicePhysicalContext>
-): DisturbanceClassificationResult {
-  const fullContext: DevicePhysicalContext = {
-    isStandstill: context?.isStandstill ?? true,
-    motionState: context?.motionState ?? (context?.isStandstill === false ? 'ACTIVE_MOTION' : 'STANDSTILL'),
-    accelVarianceG: context?.accelVarianceG ?? 0.01,
-    isFlatOnSurface: context?.isFlatOnSurface ?? true,
-    isScreenTouched: context?.isScreenTouched ?? false,
-    timeSinceLastTouchMs: context?.timeSinceLastTouchMs ?? 10000,
-    isCharging: context?.isCharging ?? false,
-    batteryState: context?.batteryState ?? (context?.isCharging ? 'CHARGING' : 'UNPLUGGED'),
-    ambientLux: context?.ambientLux ?? null,
-  };
-
-  const sig = extractDisturbanceSignature(samples, baselineMagMicroT);
-  const absPeak = sig.peakDeltaMicroT;
-  const roc = sig.rateOfChangeMicroTPerSec;
-  const pol = sig.polarizationRatio;
-  const jitter = sig.jitterRatio;
-  const steady = sig.steadinessRatio;
-
-  // Raw likelihood scores for each disturbance class
-  const rawScores: Record<DisturbanceClassId, number> = {
-    CLEAN_GEOMAGNETIC_BASELINE: 0,
-    GEOMAGNETIC_SOLAR_DISTURBANCE: 0,
-    HUMAN_HAND_GESTURE: 0,
-    SMARTWATCH_OR_MAGNET: 0,
-    CHARGING_CABLE_INDUCTION: 0,
-    LAPTOP_OR_COMPUTER: 0,
-    STRUCTURAL_METALLIC_MASS: 0,
-  };
-
-  // 1. Clean Baseline: Deviation < 0.20 µT, low rate of change, motionless phone
-  if (absPeak < 0.20 && roc < 0.4) {
-    let baseScore = 14.0 + (0.20 - absPeak) * 20;
-    if (fullContext.isStandstill && !fullContext.isScreenTouched) baseScore *= 1.3;
-    if (fullContext.isScreenTouched || fullContext.motionState === 'ACTIVE_MOTION') baseScore *= 0.05;
-    rawScores.CLEAN_GEOMAGNETIC_BASELINE = baseScore;
-  } else if (absPeak < 0.35 && roc < 0.3) {
-    let baseScore = 3.5;
-    if (fullContext.isScreenTouched || fullContext.motionState === 'ACTIVE_MOTION') baseScore *= 0.05;
-    rawScores.CLEAN_GEOMAGNETIC_BASELINE = baseScore;
-  } else {
-    rawScores.CLEAN_GEOMAGNETIC_BASELINE = 0.01;
-  }
-
-  // 2. Candidate Geomagnetic Solar Disturbance (Earth Reconnection): 50–650 nT scalar perturbation
-  // Physical criteria: Standstill on surface (e.g. windowsill), hands off, low dB/dt (< 0.25 µT/s), low electronic jitter (< 0.30)
-  if (absPeak >= 0.06 && absPeak <= 0.65 && roc <= 0.28 && jitter < 0.30) {
-    let solarScore = 4.0;
-    if (absPeak >= 0.12 && absPeak <= 0.55) solarScore += 8.5; // Sweet spot for G2–G5 geomagnetic storms
-    if (roc <= 0.15) solarScore += 5.5; // Natural ionospheric electrojets unfold over minutes, not seconds
-    if (steady >= 0.70) solarScore += 3.0;
-
-    // Multi-modal physical requirements for space weather
-    if (fullContext.isStandstill && !fullContext.isScreenTouched) {
-      solarScore += 7.0; // Motionless on non-magnetic/granite surface with hands off
-      solarScore *= 1.8;
-    }
-    if (fullContext.isScreenTouched || fullContext.motionState === 'ACTIVE_MOTION') {
-      solarScore *= 0.10; // Motion or skin contact invalidates natural space weather
-    }
-    if (fullContext.isCharging) {
-      solarScore *= 0.10; // Power supply switching invalidates clean space weather
-    }
-
-    rawScores.GEOMAGNETIC_SOLAR_DISTURBANCE = solarScore;
-  } else {
-    rawScores.GEOMAGNETIC_SOLAR_DISTURBANCE = 0.05;
-  }
-
-  // 3. Human Hand Proximity: Smooth, moderate delta (0.4 to 3.8 µT), rate of change (0.3–4.5 µT/s), balanced axes
-  if (absPeak >= 0.35 && absPeak <= 5.0) {
-    let handScore = 4.0;
-    if (absPeak >= 0.6 && absPeak <= 3.2) handScore += 5.0;
-    if (roc <= 4.5) handScore += 3.5;
-    if (pol < 0.72) handScore += 2.5; // Hand causes broad 3D field warping, not a single point pole
-    if (jitter < 0.45) handScore += 2.0; // Smooth motion
-    if (steady < 0.8) handScore += 2.0; // Hand naturally sways
-
-    // Multi-modal physical corroboration
-    if (fullContext.isScreenTouched) {
-      handScore += 8.0; // Direct capacitive skin contact confirmed
-      handScore *= 1.6;
-    } else if (fullContext.motionState === 'HAND_TREMOR') {
-      handScore += 5.0; // Physiological micro-tremor confirms device is held in hands
-    } else if (fullContext.isStandstill && !fullContext.isScreenTouched) {
-      // Phone is resting motionless on a surface with hands off
-      if (absPeak <= 0.60 && roc <= 0.22) {
-        // Slow <= 600 nT field on a motionless phone is a solar perturbation or granite sill offset, NOT a moving hand!
-        handScore *= 0.15;
-      } else if (roc >= 0.35) {
-        // Hand hovering and waving near phone
-        handScore += 3.0;
-      }
-    }
-
-    rawScores.HUMAN_HAND_GESTURE = handScore;
-  } else if (absPeak > 5.0 && absPeak < 8.0) {
-    let handScore = 1.2;
-    if (fullContext.isScreenTouched) handScore += 4.0;
-    rawScores.HUMAN_HAND_GESTURE = handScore;
-  } else {
-    rawScores.HUMAN_HAND_GESTURE = fullContext.isScreenTouched ? 1.0 : 0.05;
-  }
-
-  // 4. Smartwatch / Neodymium Magnet: Sharp dipolar gradient (> 4 µT), high rate of change, high polarization, LOW jitter (smooth physical dipole approach)
-  if (absPeak >= 3.5 && jitter < 0.45) {
-    let watchScore = 3.0;
-    if (absPeak >= 5.0 && absPeak <= 55.0) watchScore += 7.0;
-    if (roc > 4.5) watchScore += 6.0;
-    if (pol >= 0.60) watchScore += 5.0; // Dipole falls off sharply along orientation axis
-    if (fullContext.isScreenTouched && absPeak >= 4.0) watchScore += 4.0; // Smartwatch on wrist touching screen
-    rawScores.SMARTWATCH_OR_MAGNET = watchScore;
-  } else if (absPeak >= 1.8 && roc > 4.0 && jitter < 0.40) {
-    rawScores.SMARTWATCH_OR_MAGNET = 2.0;
-  } else {
-    rawScores.SMARTWATCH_OR_MAGNET = 0.05;
-  }
-
-  // 5. Charging Cable / Induction: Persistent DC offset with high-frequency switching ripple, moderate polarization
-  if (absPeak >= 2.0) {
-    let cableScore = 1.5;
-    if (absPeak >= 3.0 && absPeak <= 30.0) cableScore += 4.0;
-    if (steady >= 0.60) cableScore += 3.5; // Cable stays plugged in
-    if (jitter >= 0.25) cableScore += 3.0; // Power brick switching ripple
-
-    // Multi-modal charging hardware corroboration
-    if (fullContext.isCharging) {
-      cableScore += 8.0; // Hardware confirms active battery charging current flow
-      cableScore *= 1.6;
-    } else if (fullContext.batteryState === 'UNPLUGGED') {
-      cableScore *= 0.8;
-    }
-
-    rawScores.CHARGING_CABLE_INDUCTION = cableScore;
-  } else {
-    rawScores.CHARGING_CABLE_INDUCTION = fullContext.isCharging ? 0.8 : 0.05;
-  }
-
-  // 6. Laptop / Computer Nearby: Elevated stationary field with high spectral jitter across multiple axes
-  if (absPeak >= 3.0) {
-    let pcScore = 1.5;
-    if (absPeak >= 4.0 && absPeak <= 45.0) pcScore += 5.0;
-    if (steady >= 0.65) pcScore += 3.0; // Computer rests beside phone
-    if (jitter >= 0.35) pcScore += 6.0; // CPU/GPU VRM switching harmonics
-    if (pol < 0.80) pcScore += 2.5; // Distributed chassis EM field
-
-    // Laptop proximity is stationary on a desk
-    if (fullContext.isStandstill && !fullContext.isScreenTouched) {
-      pcScore *= 1.35;
-    } else if (fullContext.motionState === 'ACTIVE_MOTION') {
-      pcScore *= 0.25; // Walking away from stationary desk laptop
-    }
-
-    rawScores.LAPTOP_OR_COMPUTER = pcScore;
-  } else {
-    rawScores.LAPTOP_OR_COMPUTER = 0.05;
-  }
-
-  // 7. Structural Metal Gradient: Static spatial field, very low rate of change when still, very low jitter
-  if (absPeak >= 1.5 && absPeak <= 25.0 && jitter < 0.30) {
-    let structScore = 1.0;
-    if (roc < 1.0) structScore += 4.5;
-    if (jitter < 0.20) structScore += 3.0;
-    if (steady >= 0.85) structScore += 3.5; // Perfectly motionless
-
-    if (fullContext.isStandstill && !fullContext.isScreenTouched) {
-      structScore *= 1.35;
-    } else if (fullContext.isFlatOnSurface && fullContext.motionState === 'ACTIVE_MOTION' && roc < 2.0) {
-      // Sliding phone across steel desk surface
-      structScore += 5.0;
-    }
-
-    rawScores.STRUCTURAL_METALLIC_MASS = structScore;
-  } else {
-    rawScores.STRUCTURAL_METALLIC_MASS = 0.05;
-  }
-
-  // Boost scores based on previous user-confirmed learning fingerprints
-  for (const fp of userLearnedFingerprints) {
-    if (fp.userConfirmed) {
-      const deltaDiff = Math.abs(fp.signature.peakDeltaMicroT - absPeak);
-      const rocDiff = Math.abs(fp.signature.rateOfChangeMicroTPerSec - roc);
-      if (deltaDiff < 2.0 && rocDiff < 3.0) {
-        rawScores[fp.objectClassId] = (rawScores[fp.objectClassId] ?? 0) * 1.35;
-      }
-    }
-  }
-
-  // Normalize into confidence probabilities via Softmax
-  const totalScore = Object.values(rawScores).reduce((sum, v) => sum + v, 0);
-  const normalizedScores: Record<DisturbanceClassId, number> = {
-    CLEAN_GEOMAGNETIC_BASELINE: rawScores.CLEAN_GEOMAGNETIC_BASELINE / totalScore,
-    GEOMAGNETIC_SOLAR_DISTURBANCE: rawScores.GEOMAGNETIC_SOLAR_DISTURBANCE / totalScore,
-    HUMAN_HAND_GESTURE: rawScores.HUMAN_HAND_GESTURE / totalScore,
-    SMARTWATCH_OR_MAGNET: rawScores.SMARTWATCH_OR_MAGNET / totalScore,
-    CHARGING_CABLE_INDUCTION: rawScores.CHARGING_CABLE_INDUCTION / totalScore,
-    LAPTOP_OR_COMPUTER: rawScores.LAPTOP_OR_COMPUTER / totalScore,
-    STRUCTURAL_METALLIC_MASS: rawScores.STRUCTURAL_METALLIC_MASS / totalScore,
-  };
-
-  let bestClass: DisturbanceClassId = 'CLEAN_GEOMAGNETIC_BASELINE';
-  let bestScore = -1;
-  for (const [key, val] of Object.entries(normalizedScores) as Array<[DisturbanceClassId, number]>) {
-    if (val > bestScore) {
-      bestScore = val;
-      bestClass = key;
-    }
-  }
-
-  // Educational AI Reasoning text explaining how the AI reached its guess
-  let reasoning = '';
-  switch (bestClass) {
-    case 'CLEAN_GEOMAGNETIC_BASELINE':
-      if (fullContext.isStandstill && !fullContext.isScreenTouched) {
-        reasoning = `Phone is completely standstill on surface with hands off. Field deviation is minimal (${Math.round(absPeak * 1000)} nT). Matches undisturbed Earth geomagnetic baseline.`;
-      } else {
-        reasoning = `Field deviation is minimal (${Math.round(absPeak * 1000)} nT) with no localized gradient. Matches undisturbed geomagnetic background.`;
-      }
-      break;
-    case 'GEOMAGNETIC_SOLAR_DISTURBANCE':
-      reasoning = `Stationary on surface with hands off. Slow scalar deviation (+${Math.round(absPeak * 1000)} nT, rate: ${roc.toFixed(2)} µT/s) matches G2–G5 solar storm ground perturbation levels (100–500 nT). Candidate reconnection event; cross-check USGS observatory & regional phones.`;
-      break;
-    case 'HUMAN_HAND_GESTURE':
-      if (fullContext.isScreenTouched) {
-        reasoning = `Direct capacitive touchscreen contact confirmed. Smooth +${Math.round(absPeak * 1000)} nT deflection with balanced 3D axes matches hand/finger proximity.`;
-      } else if (fullContext.motionState === 'HAND_TREMOR') {
-        reasoning = `Physiological hand-holding micro-tremor detected by accelerometer (~${(fullContext.accelVarianceG ?? 0.04).toFixed(3)}g). Hand handling corroborates +${Math.round(absPeak * 1000)} nT diamagnetic field.`;
-      } else if (fullContext.isStandstill) {
-        reasoning = `Contactless hand hover: Phone is standstill on surface with zero screen touch. Smooth sinusoidal wave (${roc.toFixed(1)} µT/s, +${Math.round(absPeak * 1000)} nT) reflects approaching hand tissue.`;
-      } else {
-        reasoning = `Smooth sinusoidal trajectory (rate: ${roc.toFixed(1)} µT/s, deviation: +${Math.round(absPeak * 1000)} nT) with balanced multi-axis projection. Typical of diamagnetic hand movement.`;
-      }
-      break;
-    case 'SMARTWATCH_OR_MAGNET':
-      if (fullContext.isScreenTouched) {
-        reasoning = `Screen touch coincides with steep dipolar spike (${roc.toFixed(1)} µT/s, ${(pol * 100).toFixed(0)}% polarization), characteristic of a wrist-worn smartwatch clasp touching the display.`;
-      } else {
-        reasoning = `High gradient spike (${roc.toFixed(1)} µT/s) and sharp single-axis polarization (${(pol * 100).toFixed(0)}%). Characteristics match a 1/r³ permanent magnetic dipole.`;
-      }
-      break;
-    case 'CHARGING_CABLE_INDUCTION':
-      if (fullContext.isCharging) {
-        reasoning = `Hardware confirms active battery charging current flow. Coupled with steady +${absPeak.toFixed(1)} µT offset and power supply switching ripple, Ampère's law cable induction is confirmed.`;
-      } else {
-        reasoning = `Persistent DC offset (+${absPeak.toFixed(1)} µT) with high-frequency switching ripple. Matches Biot-Savart cylindrical current flow in a charging cable.`;
-      }
-      break;
-    case 'LAPTOP_OR_COMPUTER':
-      if (fullContext.isStandstill) {
-        reasoning = `Phone is standstill on desk with zero touch. Elevated multi-axis field (+${absPeak.toFixed(1)} µT) with ${(jitter * 100).toFixed(0)}% switching jitter matches nearby computer VRM inductors & fan motor.`;
-      } else {
-        reasoning = `Stationary multi-axis field (+${absPeak.toFixed(1)} µT) with elevated high-frequency jitter (${(jitter * 100).toFixed(0)}%). Matches computer switching regulators & inductors.`;
-      }
-      break;
-    case 'STRUCTURAL_METALLIC_MASS':
-      reasoning = `Steady baseline shift (+${absPeak.toFixed(1)} µT) with near-zero motion jitter. Matches stationary spatial gradient of steel desk rebar.`;
-      break;
-  }
-
-  const solarStormSignalRatio = Math.max(0.1, Number((absPeak / 0.1).toFixed(1)));
-
-  // Generate lightweight deterministic fingerprint hash
-  const hashVal = Math.abs(
-    Math.round(absPeak * 100) * 31 +
-    Math.round(roc * 10) * 17 +
-    Math.round(pol * 100) * 7
-  ).toString(16).padStart(6, '0');
-
-  return {
-    predictedClass: bestClass,
-    confidence: Number(bestScore.toFixed(2)),
-    scores: normalizedScores,
-    metadata: UNIVERSAL_FINGERPRINT_DATABASE[bestClass],
-    signature: sig,
-    solarStormSignalRatio,
-    fingerprintHash: `fp-${bestClass.slice(0, 4).toLowerCase()}-${hashVal}`,
-    aiReasoning: reasoning,
-    context: fullContext,
-  };
-}
-
-/**
- * Creates a learned user fingerprint when the user confirms or corrects an AI guess.
- */
-export function createUserLearnedFingerprint(
-  classification: DisturbanceClassificationResult,
-  confirmedClassId: DisturbanceClassId,
-  customLabel?: string
-): LearnedUserFingerprint {
-  return {
-    id: `learned-${Date.now()}-${classification.fingerprintHash}`,
-    confirmedAtUtc: new Date().toISOString(),
-    objectClassId: confirmedClassId,
-    customLabel: customLabel || UNIVERSAL_FINGERPRINT_DATABASE[confirmedClassId].name,
-    signature: { ...classification.signature },
-    userConfirmed: true,
-  };
+  return parsed;
 }

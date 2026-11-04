@@ -4,12 +4,12 @@ import type { DevicePhysicalContext } from '@aurorasense/shared/magnetic-classif
 
 interface PhysicalSensorContextPillsProps {
   context?: DevicePhysicalContext;
-  tiltDegrees?: number;
+  tiltDegrees?: number | null;
 }
 
 export function PhysicalSensorContextPills({
   context,
-  tiltDegrees = 0,
+  tiltDegrees,
 }: PhysicalSensorContextPillsProps) {
   if (!context) return null;
 
@@ -19,7 +19,8 @@ export function PhysicalSensorContextPills({
   let motionIcon = '🛑';
   let motionLabel = 'Standstill (Still)';
   let motionColor = '#68edc3';
-  if (motionState === 'HAND_TREMOR') {
+  if (motionState === 'UNKNOWN') { motionIcon='?'; motionLabel='Motion unknown'; motionColor='#8fa8c4'; }
+  else if (motionState === 'HAND_TREMOR') {
     motionIcon = '🤝';
     motionLabel = 'Hand Tremor';
     motionColor = '#ffd58c';
@@ -32,7 +33,7 @@ export function PhysicalSensorContextPills({
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.eyebrow}>AI MULTI-MODAL SENSOR CONTEXT</Text>
+        <Text style={styles.eyebrow}>MEASURED SENSOR CONTEXT</Text>
         <Text style={styles.realtimeText}>Live Hardware Inputs</Text>
       </View>
 
@@ -55,7 +56,7 @@ export function PhysicalSensorContextPills({
         >
           <Text style={styles.pillIcon}>{isScreenTouched ? '👆' : '✋'}</Text>
           <Text style={[styles.pillText, { color: isScreenTouched ? '#b9a5ff' : '#8fa8c4' }]}>
-            {isScreenTouched ? 'Screen Touched' : 'Hands Off'}
+            {isScreenTouched ? 'Screen Touched' : 'No screen touch'}
           </Text>
         </View>
 
@@ -71,7 +72,7 @@ export function PhysicalSensorContextPills({
         >
           <Text style={styles.pillIcon}>{isCharging ? '⚡' : '🔋'}</Text>
           <Text style={[styles.pillText, { color: isCharging ? '#ffb74d' : '#8fa8c4' }]}>
-            {isCharging ? 'Charging (Cable/Qi)' : 'Battery Power'}
+            {context.batteryState === 'UNKNOWN' || !context.batteryState ? 'Power unknown' : isCharging ? 'Charging' : 'Battery power'}
           </Text>
         </View>
 
@@ -87,7 +88,7 @@ export function PhysicalSensorContextPills({
         >
           <Text style={styles.pillIcon}>{isFlatOnSurface ? '📐' : '📱'}</Text>
           <Text style={[styles.pillText, { color: isFlatOnSurface ? '#4dd0e1' : '#8fa8c4' }]}>
-            {isFlatOnSurface ? 'Flat on Desk' : `Tilted (${tiltDegrees}°)`}
+            {tiltDegrees == null ? 'Orientation unknown' : isFlatOnSurface ? 'Approximately horizontal' : `Tilted (${tiltDegrees}°)`}
           </Text>
         </View>
       </View>

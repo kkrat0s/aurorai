@@ -18,7 +18,7 @@ import {
   type DemoCoordinatorResult,
   evaluateSparkMeasurementInsight,
   evaluateWonderRedTeam,
-  evaluateAuroraAlertDecision,
+  evaluateEvidenceFromNoaa,
   evaluateSamOpticalSegmentation,
 } from '@aurorasense/coordinator';
 import {type Catalog,type ClockMode,REPLAY_START,REPLAY_END,visibleForecasts,formatUtc,dataFreshness} from '../lib/catalog';
@@ -28,6 +28,9 @@ import Chart from './chart';
 import Ensemble from './ensemble';
 import PolarMap from './polar-map';
 import EvaluationPanel from './evaluation-panel';
+import RecordedMetaRun from './recorded-meta-run';
+import { LiveReferencePanel } from './live-reference-panel';
+import { AuroraEvidencePanel } from './aurora-evidence-panel';
 import { SolarMagnetosphere3DCanvas } from './solar-storm-3d';
 
 type Tab='storm'|'map'|'ground';
@@ -59,6 +62,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const [hemisphere,setHemisphere]=useState<'north'|'south'>('north');
   const [night,setNight]=useState(true);
   const [location,setLocation]=useState(0);
+  const [phoneRegion,setPhoneRegion]=useState<number|null>(null);
   const [session,setSession]=useState<SensorSession|null>(null);
   const [fileError,setFileError]=useState('');
   const [agent,setAgent]=useState<DemoCoordinatorResult|null>(null);
@@ -66,6 +70,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const [audit,setAudit]=useState<Action[]>([]);
   const [webAudioRunning,setWebAudioRunning]=useState(false);
   const [simDisturbance,setSimDisturbance]=useState(0);
+  const [simTrial,setSimTrial]=useState(0);
   const [simStandstill, setSimStandstill] = useState(true);
   const [simTouched, setSimTouched] = useState(false);
   const [simCharging, setSimCharging] = useState(false);
@@ -92,14 +97,9 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const dialog=useRef<HTMLDialogElement>(null);
 
   const webClassification = useMemo(() => {
-    // Generate realistic multi-axis trajectory matching disturbance magnitude
-    const jitter = simDisturbance >= 15 ? 0.8 : 0.05;
-    const samples = [
-      { x: 18.0, y: -4.0, z: 44.3, timestampMs: 1000 },
-      { x: 18.0 + simDisturbance * 0.45 + jitter, y: -4.0 + simDisturbance * 0.25 - jitter, z: 44.3 + simDisturbance * 0.85, timestampMs: 1100 },
-      { x: 18.0 + simDisturbance * 0.50 - jitter, y: -4.0 + simDisturbance * 0.30 + jitter, z: 44.3 + simDisturbance * 0.90, timestampMs: 1200 },
-      { x: 18.0 + simDisturbance * 0.52 + jitter, y: -4.0 + simDisturbance * 0.32 - jitter, z: 44.3 + simDisturbance * 0.92, timestampMs: 1300 },
-    ];
+    // Explicit synthetic trajectory for testing the teaching UI; not measured phone noise.
+    const jitter=simDisturbance>=15?.8:.05;
+    const samples=Array.from({length:24},(_,i)=>({x:18+simDisturbance*.52*i/23+jitter*Math.sin(i),y:-4+simDisturbance*.32*i/23-jitter*Math.sin(i),z:44.3+simDisturbance*.92*i/23,timestampMs:5000+simTrial*10000+i*100}));
     const physicalContext: DevicePhysicalContext = {
       isStandstill: simStandstill,
       motionState: simStandstill ? 'STANDSTILL' : 'ACTIVE_MOTION',
@@ -108,25 +108,31 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
       isCharging: simCharging,
       batteryState: simCharging ? 'CHARGING' : 'UNPLUGGED',
       isFlatOnSurface: true,
+      sampleKind: 'SYNTHETIC',
+      sensorDeviceKey: 'synthetic-web-demo',
+      acquisitionRunId: 'synthetic-web-demo',
     };
-    return classifyMagneticDisturbance(samples, 48.0, userFingerprints, physicalContext);
-  }, [simDisturbance, userFingerprints, simStandstill, simTouched, simCharging]);
+    return classifyMagneticDisturbance(samples, Math.hypot(18,-4,44.3), userFingerprints, physicalContext);
+  }, [simDisturbance, simTrial, userFingerprints, simStandstill, simTouched, simCharging]);
 
   function handleConfirmCorrect() {
+    if(!webClassification.trainable){setFeedbackMsg('This example is not eligible for teaching. Check motion/touch and sample quality.');return;}
+    if(webClassification.predictedClass==='UNKNOWN_UNCLASSIFIED'){setTeachOpen(true);setTeachClass('UNKNOWN_UNCLASSIFIED');return;}
     const fp = createUserLearnedFingerprint(webClassification, webClassification.predictedClass);
     setUserFingerprints(prev => [fp, ...prev].slice(0, 20));
-    setFeedbackMsg(`✨ Learned! Fingerprint confirmed for ${webClassification.metadata.shortLabel}.`);
+    setFeedbackMsg(`Synthetic example labeled: ${webClassification.metadata.shortLabel}.`);
     setTimeout(() => setFeedbackMsg(null), 4000);
   }
 
   function handleTeachSubmit(classId: DisturbanceClassId) {
+    if(!webClassification.trainable){setFeedbackMsg('Example not eligible for teaching.');return;}
     const label = customLabel.trim() || UNIVERSAL_FINGERPRINT_DATABASE[classId].name;
     const fp = createUserLearnedFingerprint(webClassification, classId, label);
     setUserFingerprints(prev => [fp, ...prev].slice(0, 20));
     setTeachOpen(false);
     setTeachClass(null);
     setCustomLabel('');
-    setFeedbackMsg(`🧠 Calibrated! AI learned to associate this profile with '${label}'.`);
+    setFeedbackMsg(`Synthetic user label saved for '${label}'.`);
     setTimeout(() => setFeedbackMsg(null), 4500);
   }
 
@@ -192,71 +198,30 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const qc=useMemo(()=>session?analyzeSensorSession(session):null,[session]);
   const prescriptiveReport=useMemo(()=>session&&qc?evaluateSessionPrescriptively(session,qc):null,[session,qc]);
 
-  const metaSparkInsight = useMemo(() => {
-    if (!session || !qc) return null;
-    return evaluateSparkMeasurementInsight({
-      sessionSummary: {
-        durationSeconds: qc.durationSeconds,
-        nominalHz: session.nominalHz,
-        actualHz: qc.actualHz ?? 10.0,
-        baselineMedianMicroT: qc.baselineMicroT ?? 46.1,
-        noiseMadNt: qc.noiseMadNt ?? 62.0,
-        p95DeltaNt: prescriptiveReport?.activityLevel.p95DeltaNt ?? 432.5,
-        maxDeltaNt: prescriptiveReport?.activityLevel.maxDeltaNt ?? 924.6,
-        endpointDriftNt: -333.5,
-        rateOfChangeMicroTPerSec: 0.076,
-      },
-      qcResult: { accepted: qc.accepted, flags: qc.flags },
-      spaceWeatherContext: {
-        imfBzNt: -12.4,
-        solarWindSpeedKmS: 650,
-        boulderDeflectionNt: 340,
-      },
-    });
-  }, [session, qc, prescriptiveReport]);
-
-  const metaWonderCritique = useMemo(() => {
-    if (!session || !qc || !metaSparkInsight) return null;
-    return evaluateWonderRedTeam({
-      sparkVerdict: metaSparkInsight.scientificVerdict,
-      sessionSummary: {
-        durationSeconds: qc.durationSeconds,
-        nominalHz: session.nominalHz,
-        actualHz: qc.actualHz ?? 10.0,
-        baselineMedianMicroT: qc.baselineMicroT ?? 46.1,
-        noiseMadNt: qc.noiseMadNt ?? 62.0,
-        p95DeltaNt: prescriptiveReport?.activityLevel.p95DeltaNt ?? 432.5,
-        maxDeltaNt: prescriptiveReport?.activityLevel.maxDeltaNt ?? 924.6,
-        endpointDriftNt: -333.5,
-      },
-      qcResult: { accepted: qc.accepted, flags: qc.flags },
-      independentSitesCount: 1,
-      professionalStationCoherence: true,
-    });
-  }, [session, qc, metaSparkInsight, prescriptiveReport]);
-
-  const metaAuroraAlert = useMemo(() => {
-    if (!session || !qc) return null;
-    return evaluateAuroraAlertDecision({
-      userLocation: {
-        geomagneticLatitudeDeg: 54.0,
-        isNighttime: true,
-        cloudFraction: 0.2,
-        approximateCityOrRegion: 'Colorado / Mid-Latitude',
-      },
-      spaceWeather: {
-        imfBzNt: -12.4,
-        solarWindSpeedKmS: 650,
-        ovationActivity: 75,
-        currentStormScale: 'G3',
-      },
-      groundEvidence: {
-        phoneAccepted: qc.accepted,
-        phoneDeltaNt: prescriptiveReport?.activityLevel.p95DeltaNt ?? 432.5,
-        boulderCoherence: true,
-      },
-    });
-  }, [session, qc, prescriptiveReport]);
+  const measuredSummary = useMemo(() => {
+    const a=prescriptiveReport?.activityLevel;
+    if(!session || !qc || qc.actualHz==null || qc.baselineMicroT==null || qc.noiseMadNt==null || qc.driftNt==null || a?.p95DeltaNt==null || a.maxDeltaNt==null) return null;
+    return {durationSeconds:qc.durationSeconds,nominalHz:session.nominalHz,actualHz:qc.actualHz,baselineMedianMicroT:qc.baselineMicroT,noiseMadNt:qc.noiseMadNt,p95DeltaNt:a.p95DeltaNt,maxDeltaNt:a.maxDeltaNt,endpointDriftNt:qc.driftNt};
+  }, [session,qc,prescriptiveReport]);
+  const metaSparkInsight=useMemo(()=>measuredSummary&&qc?evaluateSparkMeasurementInsight({sessionSummary:measuredSummary,qcResult:{accepted:qc.accepted,flags:qc.flags}}):null,[measuredSummary,qc]);
+  const metaWonderCritique=useMemo(()=>measuredSummary&&qc&&metaSparkInsight?evaluateWonderRedTeam({sparkVerdict:metaSparkInsight.scientificVerdict,sessionSummary:measuredSummary,qcResult:{accepted:qc.accepted,flags:qc.flags},independentSitesCount:1,professionalStationCoherence:false}):null,[measuredSummary,qc,metaSparkInsight]);
+  const [liveGroundContext,setLiveGroundContext]=useState<unknown>(null);
+  useEffect(()=>{
+    if(mode!=='live')return;
+    let active=true; const controller=new AbortController();
+    const update=async()=>{
+      const results=await Promise.allSettled([
+        fetch('/api/noaa',{signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error('NOAA unavailable');return r.json();}),
+        fetch('/api/ground?station=BOU',{signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error('USGS unavailable');return r.json();})
+      ]);
+      if(!active)return;
+      if(results[0].status==='fulfilled'){const data=results[0].value;setCatalog(c=>({...c,latestNoaa:data.latestNoaa}));setRefreshStatus(data.errors?.join(' ')||'NOAA refreshed.');}else setRefreshStatus('NOAA unavailable; retained snapshot keeps original timestamps.');
+      if(results[1].status==='fulfilled')setLiveGroundContext(results[1].value.reference);else setLiveGroundContext(null);
+    };
+    void update(); const interval=setInterval(()=>{void update();},120000);
+    return()=>{active=false;controller.abort();clearInterval(interval);};
+  },[mode]);
+  const metaAuroraAlert=useMemo(()=>evaluateEvidenceFromNoaa({asOfUtc:time,mode:mode==='live'?'LIVE':'REPLAY',latitudeDeg:LOCATIONS[location].latitude,longitudeDeg:LOCATIONS[location].longitude,latestNoaa:catalog.latestNoaa,groundReference:liveGroundContext}),[time,mode,location,catalog.latestNoaa,liveGroundContext]);
 
   const metaSamResult = useMemo(() => {
     return evaluateSamOpticalSegmentation({
@@ -326,7 +291,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
           <section className="panel context-card"><div className="context-icon"><Icon name="sensor" size={28}/></div><div><div className="tiny-label">NEXT LINK IN THE EVIDENCE</div><h3>What happened on the ground?</h3><p>Compare this event with actual USGS Boulder measurements.</p></div><button className="circle-button" aria-label="Open Ground Truth" onClick={()=>setTab('ground')}><Icon name="arrow"/></button></section>
         </>}
 
-        {tab==='map'&&<section className="panel map-panel"><div className="panel-heading"><div><div className="eyebrow">02 / AURORA MAP</div><h2>Activity is a clue. Visibility is local.</h2></div><Badge tone="violet">MODEL FORECAST</Badge></div><div className="map-toolbar"><div className="segmented compact"><button className={hemisphere==='north'?'selected':''} onClick={()=>setHemisphere('north')}>Northern</button><button className={hemisphere==='south'?'selected':''} onClick={()=>setHemisphere('south')}>Southern</button></div><label className="checkbox"><input type="checkbox" checked={night} onChange={e=>setNight(e.target.checked)}/>Twilight shading</label></div><PolarMap ovation={ovation} time={time} hemisphere={hemisphere} night={night} selectedLocation={chosen}/><div className="map-legend"><span>Lower activity</span><div/><span>Higher activity</span></div><p className="fine centered">NOAA modeled auroral activity · geographic polar graticule · no local visibility probability</p>{ovation?<><Source name="NOAA OVATION · model valid time" url={ovation.sourceUrl} time={ovation.validAtUtc}/><p className="fine">Input observed {formatUtc(ovation.observedAtUtc)} · {dataFreshness(ovation.observedAtUtc,time).toUpperCase()} · forecast horizon supplied by NOAA only.</p></>:<p className="notice">The historical model layer is unavailable. Current NOAA data is never relabeled as a May 2024 forecast.</p>}<div className="layer-list"><div><span className="layer-dot violet"/><span>Modeled auroral activity</span><Badge>{ovation?'NOAA SNAPSHOT':'UNAVAILABLE'}</Badge></div><div><span className="layer-dot mint"/><span>Ground magnetic evidence</span><Badge>{mode==='replay'?'BOU REFERENCE':'NO LIVE STATION'}</Badge></div><div><span className="layer-dot amber"/><span>Independently confirmed sightings</span><Badge>NONE LOADED</Badge></div></div><div className="location-card"><label className="tiny-label" htmlFor="region">COARSE VIEWING REGION</label><select id="region" value={location} onChange={e=>setLocation(Number(e.target.value))}>{LOCATIONS.map((l,i)=><option key={l.name} value={i}>{l.name}</option>)}</select><div className="stat-row"><Stat label="LOCAL LIGHT" value={darkness(elevation)} detail={`Solar elevation ≈ ${elevation.toFixed(0)}° · calculated`}/><Stat label="CLOUD COVER" value="Unknown" detail="No weather source connected"/></div><p className="fine">Approximate geometric Sun position; no cloud, terrain or refraction correction. Geographic location only; validated magnetic coordinates are not yet available. No precise location is requested.</p></div></section>}
+        {tab==='map'&&<section className="panel map-panel"><div className="panel-heading"><div><div className="eyebrow">02 / AURORA MAP</div><h2>Activity is a clue. Visibility is local.</h2></div><Badge tone="violet">MODEL FORECAST</Badge></div><div className="map-toolbar"><div className="segmented compact"><button className={hemisphere==='north'?'selected':''} onClick={()=>setHemisphere('north')}>Northern</button><button className={hemisphere==='south'?'selected':''} onClick={()=>setHemisphere('south')}>Southern</button></div><label className="checkbox"><input type="checkbox" checked={night} onChange={e=>setNight(e.target.checked)}/>Twilight shading</label></div><PolarMap ovation={ovation} time={time} hemisphere={hemisphere} night={night} selectedLocation={chosen}/><div className="map-legend"><span>Lower activity</span><div/><span>Higher activity</span></div><p className="fine centered">NOAA modeled auroral activity · geographic polar graticule · no local visibility probability</p>{ovation?<><Source name="NOAA OVATION · model valid time" url={ovation.sourceUrl} time={ovation.validAtUtc}/><p className="fine">Input observed {formatUtc(ovation.observedAtUtc)} · {dataFreshness(ovation.observedAtUtc,time).toUpperCase()} · forecast horizon supplied by NOAA only.</p></>:<p className="notice">The historical model layer is unavailable. Current NOAA data is never relabeled as a May 2024 forecast.</p>}<div className="layer-list"><div><span className="layer-dot violet"/><span>Modeled auroral activity</span><Badge>{ovation?'NOAA SNAPSHOT':'UNAVAILABLE'}</Badge></div><div><span className="layer-dot mint"/><span>Ground magnetic evidence</span><Badge>{mode==='replay'?'BOU REFERENCE':'USGS · GROUND TAB'}</Badge></div><div><span className="layer-dot amber"/><span>Independently confirmed sightings</span><Badge>NONE LOADED</Badge></div></div><AuroraEvidencePanel result={metaAuroraAlert}/><div className="location-card"><label className="tiny-label" htmlFor="region">COARSE VIEWING REGION</label><select id="region" value={location} onChange={e=>setLocation(Number(e.target.value))}>{LOCATIONS.map((l,i)=><option key={l.name} value={i}>{l.name}</option>)}</select><div className="stat-row"><Stat label="LOCAL LIGHT" value={darkness(elevation)} detail={`Solar elevation ≈ ${elevation.toFixed(0)}° · calculated`}/><Stat label="CLOUD COVER" value="Unknown" detail="No weather source connected"/></div><p className="fine">Approximate geometric Sun position; no cloud, terrain or refraction correction. Geographic location only; validated magnetic coordinates are not yet available. No precise location is requested.</p></div></section>}
 
         {tab==='ground'&&<>
           <section className="panel" style={{borderColor:'#1b426b'}}>
@@ -370,13 +335,13 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
             <div style={{background:'#061322',borderRadius:'10px',padding:'10px 12px',borderLeft:'3px solid #68edc3',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'10px'}}>
               <span style={{fontSize:'12px',color:'#dbe8f5',flex:1,minWidth:'220px'}}>
                 {([
-                  'Step 1 — 3D Forcefield & AI Object Fingerprinting: Wave your hand or hold a smartwatch/charger near the phone. Watch the 3D field lines warp and AI recognize the object signature!',
-                  'Step 2 — Quiet-Spot Purity Radar: Gamified 0–100% purity detector spots nearby humans, magnetized metal, or AC wires to lock onto a clean <100 nT windowsill.',
-                  'Step 3 — Solar Wind 3D & 1859 Carrington Superstorm: AI estimates Earth-field likelihood while the interactive 3D simulator shows CME bow-shock compression and the 1859 Carrington storm that set telegraph stations on fire.',
-                  'Step 4 — Fast 30s Scan (or 10m Pro) & AI Quality Verdict: Choose a 30s Quick Scan, 2m Standard, or 10m Pro session; Green/Yellow/Orange bars and Meta Muse Spark 1.3 evaluate data usability.',
-                  'Step 5 — Compare with NOAA / NASA & Infrastructure Dials: Compare phone Δ|B| against NOAA DSCOVR solar wind (Speed, Density, Bz), Kp storm curves, 4 Human Impact Dials, and USGS Boulder.',
-                  'Step 6 — Multi-Phone Citizen Network: Compare incoming citizen phone recordings across the regional network alongside reference observatories and Muse Wonder red-team checks.',
-                  'Step 7 — Per-Phone Aurora Storm Alerts: Subscribe your phone’s latitude zone to receive automatic alerts when southward IMF Bz and ground magnetic surges indicate local aurora potential.',
+                  'Step 1 — Local magnetic patterns: explore a known nearby object, inspect the suggestion and confirm or correct its label. The animation is conceptual; device identity accuracy is unmeasured.',
+                  'Step 2 — Placement checks: inspect motion, touch and charging context. These checks cannot establish an uncontaminated geomagnetic signal; record a full stationary baseline.',
+                  'Step 3 — Solar physics: the conceptual animation illustrates CME propagation, compression and reconnection. It is not inferred from the phone signal.',
+                  'Step 4 — Acquire: 30 seconds tests collection, two minutes establishes the QC baseline and ten minutes supports a professional-reference comparison. QC is deterministic.',
+                  'Step 5 — Compare: NOAA upstream solar wind is context. Use actual simultaneous USGS scalar F for a ground-field comparison; inspect all timestamps and units.',
+                  'Step 6 — Evidence gap: inspect the recorded real Spark tool run and separate scripted policy replay. No live participant network or invitation delivery is configured.',
+                  'Step 7 — Local aurora evidence: use the Aurora Map and select a coarse region. Source-based guidance has no calibrated sighting probability; automatic push delivery is not configured.',
                 ])[journeyStep-1]}
               </span>
               {journeyStep===1 && <button className="secondary-button" onClick={()=>setDrawer('why')} style={{padding:'6px 12px',fontSize:'11.5px'}}>Open 5-Step Science Story</button>}
@@ -409,100 +374,18 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                   </div>
                 </div>
 
-                {/* Bar 1: Placement Quality (Green / Yellow / Orange) */}
-                <div style={{background:'#05101d',borderRadius:'10px',padding:'12px',marginBottom:'12px',border:'1px solid #142a42'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
-                    <span style={{fontSize:'11.5px',fontWeight:'700',color:'#dbe8f5'}}>
-                      📍 1. Sensor Placement Quietness: <strong style={{color:prescriptiveReport.placementQuality.color}}>{prescriptiveReport.placementQuality.label}</strong>
-                    </span>
-                    <span style={{fontSize:'10.5px',fontWeight:'800',color:'#ffd58c',background:'#0c1b2c',padding:'2px 8px',borderRadius:'6px'}}>
-                      Noise MAD: {prescriptiveReport.placementQuality.noiseMadNt.toFixed(1)} nT (Rating: {prescriptiveReport.placementQuality.score}/100)
-                    </span>
-                  </div>
-
-                  {/* Visual Placement Segmented Bar */}
-                  <div style={{position:'relative',height:'14px',borderRadius:'7px',overflow:'hidden',display:'flex',marginBottom:'6px'}}>
-                    <div style={{width:'33.3%',background:'#20c997',opacity:prescriptiveReport.placementQuality.noiseMadNt < 100 ? 1 : 0.4}} title="Green: Excellent (< 100 nT)"/>
-                    <div style={{width:'50%',background:'#ffd58c',opacity:prescriptiveReport.placementQuality.noiseMadNt >= 100 && prescriptiveReport.placementQuality.noiseMadNt <= 250 ? 1 : 0.4}} title="Yellow: Fair (100–250 nT)"/>
-                    <div style={{width:'16.7%',background:'#ff6b6b',opacity:prescriptiveReport.placementQuality.noiseMadNt > 250 ? 1 : 0.4}} title="Orange: Poor (> 250 nT)"/>
-
-                    {/* Needle Marker */}
-                    <div
-                      style={{
-                        position:'absolute',
-                        top:0,
-                        bottom:0,
-                        left:`${Math.min(98, Math.max(2, (prescriptiveReport.placementQuality.noiseMadNt / 300) * 100))}%`,
-                        width:'4px',
-                        background:'#ffffff',
-                        boxShadow:'0 0 6px #fff',
-                        borderRadius:'2px',
-                        transform:'translateX(-50%)',
-                      }}
-                    />
-                  </div>
-
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'9px',color:'#7693b0',fontWeight:'600',marginBottom:'6px'}}>
-                    <span style={{color:'#20c997'}}>🟢 0 nT (Optimal Stillness)</span>
-                    <span style={{color:'#20c997'}}>100 nT (Quiet Threshold)</span>
-                    <span style={{color:'#ffd58c'}}>250 nT (QC Screen Limit)</span>
-                    <span style={{color:'#ff6b6b'}}>🟠 300+ nT (Noisy / Moved)</span>
-                  </div>
-                  <p style={{margin:0,fontSize:'11.5px',color:'#c2d6eb',lineHeight:'1.45'}}>
-                    {prescriptiveReport.placementQuality.explanation} <strong style={{color:'#eff7ff'}}>{prescriptiveReport.placementQuality.actionAdvice}</strong>
-                  </p>
+                <div className="stat-row">
+                  <Stat label="MEASURED BASELINE MAD" value={prescriptiveReport.placementQuality.noiseMadNt===null?'Unavailable':`${prescriptiveReport.placementQuality.noiseMadNt.toFixed(1)} nT`} detail="Local variation; not calibrated sensor accuracy"/>
+                  <Stat label="LOCAL ABSOLUTE DEVIATION · p95" value={prescriptiveReport.activityLevel.p95DeltaNt===null?'Unavailable':`${prescriptiveReport.activityLevel.p95DeltaNt.toFixed(0)} nT`} detail="QC-usable samples; no Kp or NOAA G inference"/>
+                  <Stat label="USABLE SAMPLE FRACTION" value={prescriptiveReport.placementQuality.score===null?'Unavailable':`${prescriptiveReport.placementQuality.score}%`} detail="Fraction passing deterministic sample screening"/>
                 </div>
-
-                {/* Bar 2: Space Weather Activity Level (Green / Yellow / Cyan / Red) */}
-                <div style={{background:'#05101d',borderRadius:'10px',padding:'12px',marginBottom:'12px',border:'1px solid #142a42'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}}>
-                    <span style={{fontSize:'11.5px',fontWeight:'700',color:'#dbe8f5'}}>
-                      ☀️ 2. Space Weather Activity Level: <strong style={{color:prescriptiveReport.activityLevel.color}}>{prescriptiveReport.activityLevel.label}</strong>
-                    </span>
-                    <span style={{fontSize:'10.5px',fontWeight:'800',color:prescriptiveReport.activityLevel.color,background:'#0c1b2c',padding:'2px 8px',borderRadius:'6px'}}>
-                      Δ|B| 95%: {prescriptiveReport.activityLevel.p95DeltaNt.toFixed(0)} nT · Peak: {prescriptiveReport.activityLevel.maxDeltaNt.toFixed(0)} nT
-                    </span>
-                  </div>
-
-                  {/* Visual Activity Segmented Bar */}
-                  <div style={{position:'relative',height:'14px',borderRadius:'7px',overflow:'hidden',display:'flex',marginBottom:'6px'}}>
-                    <div style={{width:'12%',background:'#20c997',opacity:prescriptiveReport.activityLevel.p95DeltaNt < 60 ? 1 : 0.4}} title="G0 Quiet (< 60 nT)"/>
-                    <div style={{width:'28%',background:'#ffd58c',opacity:prescriptiveReport.activityLevel.p95DeltaNt >= 60 && prescriptiveReport.activityLevel.p95DeltaNt < 200 ? 1 : 0.4}} title="G1-G2 Moderate (60-200 nT)"/>
-                    <div style={{width:'40%',background:'#00e5ff',opacity:prescriptiveReport.activityLevel.p95DeltaNt >= 200 && prescriptiveReport.activityLevel.p95DeltaNt < 500 ? 1 : 0.4}} title="G3-G4 Severe (200-500 nT)"/>
-                    <div style={{width:'20%',background:'#ff5252',opacity:prescriptiveReport.activityLevel.p95DeltaNt >= 500 ? 1 : 0.4}} title="G5 Extreme (> 500 nT)"/>
-
-                    {/* Needle Marker */}
-                    <div
-                      style={{
-                        position:'absolute',
-                        top:0,
-                        bottom:0,
-                        left:`${Math.min(98, Math.max(2, (prescriptiveReport.activityLevel.p95DeltaNt / 600) * 100))}%`,
-                        width:'4px',
-                        background:'#ffffff',
-                        boxShadow:'0 0 6px #fff',
-                        borderRadius:'2px',
-                        transform:'translateX(-50%)',
-                      }}
-                    />
-                  </div>
-
-                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'9px',color:'#7693b0',fontWeight:'600',marginBottom:'6px'}}>
-                    <span style={{color:'#20c997'}}>🟢 0 nT (Quiet)</span>
-                    <span style={{color:'#ffd58c'}}>60 nT (G1 Minor)</span>
-                    <span style={{color:'#ffd58c'}}>200 nT (G2 Moderate)</span>
-                    <span style={{color:'#00e5ff'}}>500 nT (G4 Severe)</span>
-                    <span style={{color:'#ff5252'}}>🔴 600+ nT (G5 Extreme)</span>
-                  </div>
-                  <p style={{margin:0,fontSize:'11.5px',color:'#c2d6eb',lineHeight:'1.45'}}>
-                    {prescriptiveReport.activityLevel.explanation} <span style={{fontStyle:'italic',color:'#9bbcd9'}}>{prescriptiveReport.activityLevel.scientificMeaning}</span>
-                  </p>
-                </div>
+                <p className="fine">{prescriptiveReport.placementQuality.explanation}</p>
+                <p className="fine">{prescriptiveReport.activityLevel.explanation} {prescriptiveReport.activityLevel.scientificMeaning}</p>
 
                 {/* Section 3: Plain-English 10-Minute Timeline Story */}
                 <div style={{background:'#05101d',borderRadius:'10px',padding:'12px',marginBottom:'14px',border:'1px solid #142a42'}}>
                   <span style={{fontSize:'11px',fontWeight:'800',color:'#ffd58c',display:'block',marginBottom:'8px'}}>
-                    ⏱️ What Happened During Your 10-Minute Recording:
+                    ⏱️ What the QC-usable intervals show:
                   </span>
                   <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',gap:'8px'}}>
                     {prescriptiveReport.timelineStory.map((item, idx) => (
@@ -584,7 +467,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                 {metaSparkInsight && metaWonderCritique && metaAuroraAlert && (
                   <div style={{marginTop:'14px',display:'flex',flexDirection:'column',gap:'12px'}}>
                     <div style={{color:'#b9a5ff',fontSize:'10px',fontWeight:'800',letterSpacing:'1.2px',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'6px'}}>
-                      <span>🤖 META AI MULTI-MODEL ARCHITECTURE (Muse Spark 1.3 · Muse Wonder · Muse Image · SAM 3.1)</span>
+                      <span>SCIENTIFIC MEASUREMENT REVIEW</span>
                       <span style={{fontSize:'9.5px',color:'#ffd58c',fontWeight:'700',background:'#1b1408',padding:'2px 8px',borderRadius:'6px',border:'1px solid #594316'}}>
                         {metaSparkInsight.executionMode} · modelCalled: {String(metaSparkInsight.modelCalled)}
                       </span>
@@ -593,7 +476,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                     {/* Meta Muse Spark 1.3 Card */}
                     <div style={{background:'#081a2e',borderRadius:'10px',padding:'12px',border:'1px solid #1c426b'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px',flexWrap:'wrap',gap:'6px'}}>
-                        <span style={{fontSize:'11.5px',fontWeight:'800',color:'#00e5ff'}}>🧠 Meta Muse Spark 1.3 · Scientific Observation Coordinator</span>
+                        <span style={{fontSize:'11.5px',fontWeight:'800',color:'#00e5ff'}}>{metaSparkInsight.modelCalled ? 'Muse Spark · Measurement review' : 'Local measurement analysis · no model call'}</span>
                         <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
                           <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:'#ffd58c20',color:'#ffd58c',border:'1px solid #ffd58c'}}>
                             REGIONAL: {metaSparkInsight.regionalVerdict}
@@ -607,16 +490,16 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                         {metaSparkInsight.narrative}
                       </p>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',gap:'6px',fontSize:'10.5px',background:'#040d1a',padding:'8px',borderRadius:'6px',color:'#c3d9ed'}}>
-                        <div>• Rate of Change: <strong style={{color:'#20c997'}}>0.076 µT/s (Slow Drift / ULF)</strong></div>
-                        <div>• Frequency Regime: <strong style={{color:'#00e5ff'}}>Pc5 Pulsations (1.6–7 mHz)</strong></div>
-                        <div>• Noise Floor MAD: <strong style={{color:'#ffd58c'}}>62.0 nT (Sensor Thermal Limit)</strong></div>
+                        <div>• Solar Cause: <strong style={{color:'#ffd58c'}}>Not established</strong></div>
+                        <div>• Frequency Attribution: <strong style={{color:'#00e5ff'}}>Not evaluated</strong></div>
+                        <div>• Baseline MAD: <strong style={{color:'#ffd58c'}}>{qc?.noiseMadNt?.toFixed(1) ?? 'Unknown'} nT (measured baseline variation)</strong></div>
                       </div>
                     </div>
 
                     {/* Meta Muse Wonder Red-Team Card */}
                     <div style={{background:'#161124',borderRadius:'10px',padding:'12px',border:'1px solid #362554'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px',flexWrap:'wrap',gap:'6px'}}>
-                        <span style={{fontSize:'11.5px',fontWeight:'800',color:'#b9a5ff'}}>⚖️ Meta Muse Wonder · Adversarial Red-Team &amp; Invariant Gate</span>
+                        <span style={{fontSize:'11.5px',fontWeight:'800',color:'#b9a5ff'}}>Local scientific critique · no model call</span>
                         <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:'#ffd58c20',color:'#ffd58c',border:'1px solid #ffd58c'}}>
                           {metaWonderCritique.critiqueStatus}
                         </span>
@@ -638,7 +521,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                     {/* Proactive Aurora Alert & SAM 3.1 Card */}
                     <div style={{background:'#1c0e1e',borderRadius:'10px',padding:'12px',border:`1px solid ${metaAuroraAlert.alertColor}`}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px',flexWrap:'wrap',gap:'6px'}}>
-                        <span style={{fontSize:'11.5px',fontWeight:'800',color:metaAuroraAlert.alertColor}}>🌟 Proactive Aurora Alert Scenario &amp; Viewing Guidance</span>
+                        <span style={{fontSize:'11.5px',fontWeight:'800',color:metaAuroraAlert.alertColor}}>🌟 Local Aurora Evidence &amp; Viewing Guidance</span>
                         <span style={{fontSize:'10px',fontWeight:'800',padding:'2px 8px',borderRadius:'6px',background:`${metaAuroraAlert.alertColor}25`,color:metaAuroraAlert.alertColor,border:`1px solid ${metaAuroraAlert.alertColor}`}}>
                           {metaAuroraAlert.alertLevel}
                         </span>
@@ -655,7 +538,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                       {/* Meta SAM 3.1 Optical Segmentation */}
                       <div style={{background:'#0f0812',borderRadius:'6px',padding:'8px',border:'1px solid #36173b'}}>
                         <div style={{fontSize:'10px',fontWeight:'800',color:'#b9a5ff',marginBottom:'3px'}}>
-                          🔭 META SAM 3.1 · OPTICAL SKY SEGMENTATION SCHEMA ({metaSamResult.executionMode})
+                          Optical segmentation concept · no model call ({metaSamResult.executionMode})
                         </div>
                         <div style={{fontSize:'10px',color:'#9cbddc',marginBottom:'4px'}}>
                           {metaSamResult.provenanceNote}
@@ -677,11 +560,11 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
             <button className="text-button" onClick={()=>{setSession(null);record('PHONE_SESSION_FORGOTTEN','Removed imported data from component memory');}}>Forget imported session</button></>}
             <div className="import-row"><label className="secondary-button">Import sensor JSON<input type="file" accept=".json,application/json" onChange={e=>{void importSession(e.target.files?.[0]);e.target.value='';}}/></label><small>Processed locally in this browser. No upload.</small></div>{fileError&&<p className="error" role="alert">{fileError}</p>}
           </section>
-          <section className="panel"><div className="panel-heading"><div><h3>Professional reference · Boulder</h3><p>Independent observatory measurements</p></div><Badge tone="mint">HISTORICAL OBSERVATORY</Badge></div>{mode==='replay'?<><Chart points={referencePoints} label={`USGS Boulder ${reference?.component??'F'} absolute magnetic field in nanotesla`} unit="nT"/><Source name={`USGS BOU · ${reference?.component??'F'} · ${reference?.status??'unknown status'}`} url={reference?.sourceUrl??'https://geomag.usgs.gov/'} time={reference?.retrievedAtUtc}/><p className="fine">Absolute {reference?.component==='F'?'scalar field magnitude':'geographic component'} · 1-minute cadence · retrospective adjusted record. Original operational availability is unknown. Historical reference is not evidence of a current phone correlation.</p></>:<div className="empty-chart">No live observatory feed connected. Switch to Historical replay to inspect the verified May 10–13, 2024 BOU series.</div>}</section>
+          <section className="panel"><div className="panel-heading"><div><h3>{mode==='replay'?'Professional reference · Boulder':'Professional ground reference'}</h3><p>Independent observatory measurements</p></div><Badge tone="mint">{mode==='replay'?'HISTORICAL OBSERVATORY':'LIVE USGS'}</Badge></div>{mode==='replay'?<><Chart points={referencePoints} label={`USGS Boulder ${reference?.component??'F'} absolute magnetic field in nanotesla`} unit="nT"/><Source name={`USGS BOU · ${reference?.component??'F'} · ${reference?.status??'unknown status'}`} url={reference?.sourceUrl??'https://geomag.usgs.gov/'} time={reference?.retrievedAtUtc}/><p className="fine">Absolute {reference?.component==='F'?'scalar field magnitude':'geographic component'} · 1-minute cadence · retrospective adjusted record. Original operational availability is unknown. Historical reference is not evidence of a current phone correlation.</p></>:<><label className="tiny-label" htmlFor="phone-region">PHONE COARSE REGION</label><select id="phone-region" value={phoneRegion??''} onChange={e=>setPhoneRegion(e.target.value===''?null:Number(e.target.value))}><option value="">Unknown — choose before comparing</option>{LOCATIONS.map((region,index)=><option key={region.name} value={index}>{region.name}</option>)}</select><LiveReferencePanel session={session} qc={qc} coarseLocation={phoneRegion===null?undefined:LOCATIONS[phoneRegion]}/></>}</section>
         </>}
       </div>
 
-      <aside className="secondary-column"><section className="panel coordinator-panel"><div className="coordinator-heading"><span className="spark-box"><Icon name="spark" size={22}/></span><div><h3>Observation coordinator</h3><span>Evidence before conclusions</span></div></div><Badge tone="amber">SCRIPTED POLICY DEMO · NO MODEL CALL</Badge><h3 className="agent-question">One phone.<br/>Enough evidence?</h3><p>A local spike needs quality checks and geographically independent observations before it can support a regional claim.</p><div className="coverage-summary"><span>Real independent phone sites</span><strong>0</strong></div><div className="coverage-summary"><span>Verified optical observations</span><strong>0</strong></div><div className="agent-steps"><span><Icon name="check" size={14}/> Inspect evidence</span><span><Icon name="check" size={14}/> Find a coverage gap</span><span><Icon name="check" size={14}/> Request an opted-in observation</span><span><Icon name="check" size={14}/> Run deterministic validation</span></div><button className="primary-button full" onClick={runAgent}><Icon name="spark" size={16}/>{agent?'Replay policy workflow':'Run policy workflow'}</button><p className="fine">Synthetic May 2024 scenario · simulated adult volunteer · local audit only. Genuine Muse Spark and persisted invitations require configured services.</p>{agent&&<div className="agent-result" aria-live="polite"><Badge tone="amber">{agent.verdict}</Badge><p>Regional evidence remains inconclusive. This synthetic workflow contains a contaminated phone and lacks independently verified real sites and a matching professional reference.</p><details><summary>{agent.timeline.length} audited tool actions</summary><ol className="audit-list">{agent.timeline.map(item=><li key={item.id}><strong>{item.tool}</strong><span>{item.status} · {formatUtc(item.atUtc)}</span></li>)}</ol></details><button className="text-button" onClick={()=>download('aurorasense-scripted-policy-audit.json',agent)}>Export workflow evidence <Icon name="external" size={13}/></button></div>}</section>
+      <aside className="secondary-column"><RecordedMetaRun/><section className="panel coordinator-panel"><div className="coordinator-heading"><span className="spark-box"><Icon name="spark" size={22}/></span><div><h3>Observation coordinator</h3><span>Evidence before conclusions</span></div></div><Badge tone="amber">SCRIPTED POLICY DEMO · NO MODEL CALL</Badge><h3 className="agent-question">One phone.<br/>Enough evidence?</h3><p>A local spike needs quality checks and geographically independent observations before it can support a regional claim.</p><div className="coverage-summary"><span>Real independent phone sites</span><strong>0</strong></div><div className="coverage-summary"><span>Verified optical observations</span><strong>0</strong></div><div className="agent-steps"><span><Icon name="check" size={14}/> Inspect evidence</span><span><Icon name="check" size={14}/> Find a coverage gap</span><span><Icon name="check" size={14}/> Request an opted-in observation</span><span><Icon name="check" size={14}/> Run deterministic validation</span></div><button className="primary-button full" onClick={runAgent}><Icon name="spark" size={16}/>{agent?'Replay policy workflow':'Run policy workflow'}</button><p className="fine">Synthetic May 2024 scenario · simulated adult volunteer · local audit only. Genuine Muse Spark and persisted invitations require configured services.</p>{agent&&<div className="agent-result" aria-live="polite"><Badge tone="amber">{agent.verdict}</Badge><p>Regional evidence remains inconclusive. This synthetic workflow contains a contaminated phone and lacks independently verified real sites and a matching professional reference.</p><details><summary>{agent.timeline.length} audited tool actions</summary><ol className="audit-list">{agent.timeline.map(item=><li key={item.id}><strong>{item.tool}</strong><span>{item.status} · {formatUtc(item.atUtc)}</span></li>)}</ol></details><button className="text-button" onClick={()=>download('aurorasense-scripted-policy-audit.json',agent)}>Export workflow evidence <Icon name="external" size={13}/></button></div>}</section>
         <section className="panel evidence-key"><div className="eyebrow">READ THE LABELS</div><h3>Different evidence.<br/>Different meaning.</h3><p><span className="layer-dot violet"/><strong>Modeled</strong> tells us what may happen.</p><p><span className="layer-dot mint"/><strong>Measured</strong> tells us what an instrument recorded.</p><p><span className="layer-dot amber"/><strong>Confirmed optical</strong> tells us aurora was seen.</p><div className="notice">Magnetic disturbance ≠ guaranteed visible aurora.</div></section>
         <button className="why-card" onClick={()=>setDrawer('why')}><Icon name="book" size={24}/><span><strong>How does the sky glow?</strong><small>Follow the five-step science story.</small></span><Icon name="arrow" size={18}/></button>
       </aside></div>
@@ -804,11 +687,11 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
 
           {/* Segmented Visual Scale Bar */}
           <div style={{position:'relative',height:'16px',borderRadius:'8px',overflow:'hidden',display:'flex',marginBottom:'6px'}}>
-            <div style={{width:'20%',background:'#4dd0e1',opacity:simDisturbance <= 0.5 ? 1 : 0.6}} title="Solar Storm: 50–500 nT"/>
-            <div style={{width:'22%',background:'#64b5f6',opacity:simDisturbance > 0.5 && simDisturbance <= 3.8 ? 1 : 0.6}} title="Hand / Body: 500–3,800 nT"/>
-            <div style={{width:'22%',background:'#ffb74d',opacity:simDisturbance > 3.8 && simDisturbance <= 15 ? 1 : 0.6}} title="Charger Induction: 2,500–15,000 nT"/>
-            <div style={{width:'18%',background:'#ba68c8',opacity:simDisturbance > 15 && simDisturbance <= 35 ? 1 : 0.6}} title="Laptop / PC: 15,000–35,000 nT"/>
-            <div style={{width:'18%',background:'#ff7043',opacity:simDisturbance > 35 ? 1 : 0.6}} title="Smartwatch / Magnet: 35,000–60,000+ nT"/>
+            <div style={{width:'20%',background:'#4dd0e1',opacity:simDisturbance <= 0.5 ? 1 : 0.6}} title="Local deviation ≤500 nT; cause unknown"/>
+            <div style={{width:'22%',background:'#64b5f6',opacity:simDisturbance > 0.5 && simDisturbance <= 3.8 ? 1 : 0.6}} title="Local deviation 500–3,800 nT; cause unknown"/>
+            <div style={{width:'22%',background:'#ffb74d',opacity:simDisturbance > 3.8 && simDisturbance <= 15 ? 1 : 0.6}} title="Local deviation 3,800–15,000 nT; cause unknown"/>
+            <div style={{width:'18%',background:'#ba68c8',opacity:simDisturbance > 15 && simDisturbance <= 35 ? 1 : 0.6}} title="Local deviation 15,000–35,000 nT; cause unknown"/>
+            <div style={{width:'18%',background:'#ff7043',opacity:simDisturbance > 35 ? 1 : 0.6}} title="Local deviation >35,000 nT; cause unknown"/>
 
             {/* Sliding Indicator Needle */}
             <div
@@ -829,22 +712,24 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
 
           <div style={{display:'flex',justifyContent:'space-between',fontSize:'9px',color:'#7693b0',fontWeight:'600'}}>
             <span>0 nT (Quiet)</span>
-            <span>☀️ 500 nT</span>
-            <span>🖐️ 3.8 µT</span>
-            <span>🔌 15 µT</span>
-            <span>💻 35 µT</span>
-            <span>⌚ 50+ µT</span>
+            <span>500 nT</span>
+            <span>3.8 µT</span>
+            <span>15 µT</span>
+            <span>35 µT</span>
+            <span>50+ µT</span>
           </div>
         </div>
 
+        <button className="secondary-button" onClick={()=>setSimTrial(value=>value+1)}>Repeat synthetic trial (independent window)</button>
+        <p className="fine">SYNTHETIC PHONE SIMULATION · human-confirmed labels are teaching examples, not verified recognition accuracy. Repeat a trial to test retrieval; the training window cannot validate itself.</p>
         {/* Live AI Guesstimate & Physics Explainability */}
         <div style={{background:'#0c1b2c',borderRadius:'10px',padding:'14px',border:`1.5px solid ${webClassification.metadata.color}`,marginBottom:'12px'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
             <span style={{fontSize:'13.5px',fontWeight:'700',color:webClassification.metadata.color}}>
-              {webClassification.metadata.icon} AI Guesstimate: {webClassification.metadata.name}
+              {webClassification.metadata.icon} Local pattern suggestion: {webClassification.metadata.name}
             </span>
             <span style={{fontSize:'11px',fontWeight:'bold',color:webClassification.metadata.color,background:`${webClassification.metadata.color}22`,padding:'3px 8px',borderRadius:'6px'}}>
-              {Math.round(webClassification.confidence*100)}% Match
+              {Math.round(webClassification.confidence*100)}/100 similarity score
             </span>
           </div>
 
@@ -869,7 +754,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
               <div style={{fontSize:'11px',fontWeight:'bold',color:'#eff7ff'}}>{(webClassification.signature.jitterRatio * 100).toFixed(0)}%</div>
             </div>
             <div>
-              <div style={{fontSize:'8.5px',color:'#7e9cb8',fontWeight:'bold'}}>Solar Storm Ratio</div>
+              <div style={{fontSize:'8.5px',color:'#7e9cb8',fontWeight:'bold'}}>Amplitude / 100 nT</div>
               <div style={{fontSize:'11px',fontWeight:'bold',color:webClassification.solarStormSignalRatio > 10 ? '#ffd58c' : '#68edc3'}}>
                 {webClassification.solarStormSignalRatio}x
               </div>
@@ -966,7 +851,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
                 <div key={tier.noaaScale} style={{background:'#091b2c',padding:'8px',borderRadius:'6px',border:'1px solid #1c3b5c'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'3px'}}>
                     <strong style={{color:'#00e5ff'}}>{tier.noaaScale} ({tier.kpIndex})</strong>
-                    <span style={{color:'#ffd58c',fontWeight:'bold',fontSize:'10px'}}>Δ|B|: {tier.groundPerturbationNanoT[0]}–{tier.groundPerturbationNanoT[1]} nT</span>
+                    <span style={{color:'#ffd58c',fontWeight:'bold',fontSize:'10px'}}>No universal phone Δ|B| threshold</span>
                   </div>
                   <div style={{color:'#eff7ff',fontSize:'10.5px',fontWeight:'600'}}>{tier.name}</div>
                   <div style={{color:'#8fa8c4',fontSize:'9.5px',marginTop:'4px'}}>{tier.phoneDetectability}</div>
@@ -976,7 +861,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
 
             <div style={{background:'#0b1f33',padding:'8px 10px',borderRadius:'6px',borderLeft:'3px solid #ffd58c',marginBottom:'8px'}}>
               <strong style={{color:'#ffd58c',display:'block',marginBottom:'3px'}}>🪨 The Granite Window Sill Phenomenon:</strong>
-              <span>{GRANITE_WINDOWSILL_PHYSICS.materialComposition} Mineral magnetism creates a static remanent offset of {GRANITE_WINDOWSILL_PHYSICS.staticPermeabilityOffsetNt[0]}–{GRANITE_WINDOWSILL_PHYSICS.staticPermeabilityOffsetNt[1]} nT. {GRANITE_WINDOWSILL_PHYSICS.windowSillAdvantage} Tap <strong>↺ ZERO</strong> while stationary to subtract the granite static field and isolate dynamic solar perturbations.</span>
+              <span>{GRANITE_WINDOWSILL_PHYSICS.materialComposition} Surface magnetic offsets vary and have not been measured here. {GRANITE_WINDOWSILL_PHYSICS.windowSillAdvantage} Tap <strong>↺ ZERO</strong> while stationary to set a local baseline. This does not isolate solar disturbances.</span>
             </div>
 
             <div style={{background:'#0a1c2e',padding:'8px 10px',borderRadius:'6px',borderLeft:'3px solid #68edc3'}}>

@@ -11,6 +11,7 @@ const config = getDefaultConfig(projectRoot);
 config.watchFolders = [
   path.resolve(workspaceRoot, 'packages/shared'),
   path.resolve(workspaceRoot, 'packages/coordinator'),
+  path.resolve(workspaceRoot, 'docs'), // Reviewed public run artifact shared with the web UI.
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 

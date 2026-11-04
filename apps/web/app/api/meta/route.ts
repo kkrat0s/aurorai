@@ -6,7 +6,7 @@ import {
   MUSE_IMAGE_CONCEPTS,
   META_MODELS,
   runDemoCoordinator,
-  runLiveMetaSparkInsight,
+
 } from '@aurorasense/coordinator';
 
 export const runtime = 'nodejs';
@@ -17,18 +17,18 @@ export async function GET() {
   const isConfigured = Boolean(metaKey && metaKey.trim().length >= 10);
 
   return NextResponse.json({
-    status: 'ACTIVE',
+    status: isConfigured ? 'CONFIGURED_UNVERIFIED' : 'LOCAL_ONLY',
     provider: 'Meta AI / Meta Model API',
     apiKeyConfigured: isConfigured,
     executionNote: isConfigured
-      ? 'Server-side META_MODEL_API_KEY present; live Muse Spark 1.3 Responses endpoint enabled with deterministic fallback.'
+      ? 'Server credential present; authenticated /api/agent requires verified access, trusted evidence and a durable budget. Presence does not verify a successful model run.'
       : 'No META_MODEL_API_KEY configured; deterministic local evaluators and scripted policy demo active (modelCalled: false).',
     models: {
       sparkCoordinator: {
         modelId: META_MODELS.SPARK,
         role: 'Primary Agentic Scientific Observation Coordinator & Insight Generator',
         toolCalling: 'Meta Model API Responses (Strict Function Calling)',
-        status: isConfigured ? 'LIVE_CONFIGURED' : 'LOCAL_DETERMINISTIC_FALLBACK',
+        status: isConfigured ? 'CONFIGURED_UNVERIFIED' : 'LOCAL_DETERMINISTIC_FALLBACK',
       },
       wonderRedTeam: {
         modelId: META_MODELS.WONDER,
@@ -53,18 +53,28 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const reader=request.body?.getReader();
+    let raw=''; const decoder=new TextDecoder(); let bytes=0;
+    let deadline:ReturnType<typeof setTimeout>|undefined;
+    const timedOut=new Promise<never>((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Request body timed out')),4000);});
+    if(reader){try{while(true){
+      const part=await Promise.race([reader.read(),timedOut]); if(part.done)break;
+      bytes+=part.value.byteLength;
+      if(bytes>20_000){void reader.cancel();return NextResponse.json({error:'Request too large'},{status:413});}
+      raw+=decoder.decode(part.value,{stream:true});
+    }raw+=decoder.decode();}finally{if(deadline)clearTimeout(deadline);void reader.cancel().catch(()=>undefined);reader.releaseLock();}}
+    else if(deadline)clearTimeout(deadline);
+    const body = JSON.parse(raw); if(!body || typeof body!=='object' || Array.isArray(body)) return NextResponse.json({error:'Invalid request'},{status:400});
     const action = body.action;
-    const metaKey = process.env.META_MODEL_API_KEY;
+
 
     switch (action) {
       case 'spark_insight': {
-        const insight = await runLiveMetaSparkInsight(body.payload, metaKey);
-        return NextResponse.json({ success: true, insight });
+        return NextResponse.json({success:false,code:'AUTHENTICATED_AGENT_REQUIRED',modelCalled:false,error:'Use /api/agent with verified researcher authentication, trusted evidence and durable budget. This public endpoint cannot spend model credits.'},{status:403});
       }
 
       case 'wonder_red_team': {
-        const redTeam = evaluateWonderRedTeam(body.payload, metaKey);
+        const redTeam = evaluateWonderRedTeam(body.payload);
         return NextResponse.json({ success: true, redTeam });
       }
 
@@ -98,7 +108,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Meta API processing failed' },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }

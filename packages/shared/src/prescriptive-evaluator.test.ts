@@ -1,70 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateSessionPrescriptively } from './prescriptive-evaluator';
 import { analyzeSensorSession, type SensorSession } from './sensor';
-
-describe('Prescriptive Session Evaluator', () => {
-  it('correctly rates clean 62 nT baseline as EXCELLENT placement and G3-G4 candidate storm', () => {
-    // Construct synthetic session with 62 nT noise and 350 nT sustained excursion
-    const samples: SensorSession['samples'] = [];
-    const t0 = 1000;
-    for (let i = 0; i < 1300; i++) {
-      const isLate = i >= 1200;
-      const drift = isLate ? -0.35 : 0.0;
-      samples.push({
-        x: 18.0 + (Math.sin(i * 0.7) * 0.04),
-        y: -4.0 + (Math.cos(i * 0.7) * 0.03),
-        z: 44.3 + drift + (Math.sin(i * 1.1) * 0.05),
-        sensorTimestampSeconds: i * 0.1,
-        receivedMonotonicMs: t0 + i * 100,
-        receivedAtUtc: new Date(1730400000000 + i * 100).toISOString(),
-        accelerationG: { x: 0.02, y: -0.01, z: -0.99 },
-        accelerationAgeMs: 5,
-      });
-    }
-
-    const session: SensorSession = {
-      schemaVersion: 'aurorasense.sensor.v1',
-      id: 'test-session-1',
-      kind: 'MEASURED_LIVE',
-      sourceId: 'AURORASENSE_PHONE',
-      frame: 'DEVICE',
-      unit: 'microT',
-      startedAtUtc: new Date(1730400000000).toISOString(),
-      endedAtUtc: new Date(1730400130000).toISOString(),
-      utcAnchor: {
-        sensorTimestampSeconds: 0,
-        utc: new Date(1730400000000).toISOString(),
-        uncertaintyMs: null,
-      },
-      nominalHz: 10,
-      device: {
-        platform: 'ios',
-        model: 'iPhone 14 Pro Max',
-        sensor: 'expo-sensors/Magnetometer',
-        calibration: 'OS_CALIBRATED_ACCURACY_UNKNOWN',
-      },
-      consent: {
-        adultConfirmed: true,
-        recording: true,
-        version: 'foreground-local-v1',
-        atUtc: new Date(1730400000000).toISOString(),
-      },
-      stopReason: 'DURATION_COMPLETE',
-      markers: [],
-      samples,
-    };
-
-    const qc = analyzeSensorSession(session);
-    const report = evaluateSessionPrescriptively(session, qc);
-
-    expect(report.placementQuality.rating).toBe('EXCELLENT');
-    expect(report.placementQuality.badgeText).toContain('EXCELLENT');
-    expect(report.placementQuality.color).toBe('#20c997');
-    expect(report.placementQuality.score).toBeGreaterThanOrEqual(80);
-
-    expect(report.activityLevel.tier).toBe('G3_G4_SEVERE');
-    expect(report.activityLevel.badgeText).toContain('G3–G4');
-    expect(report.timelineStory).toHaveLength(3);
-    expect(report.prescriptiveGuidance).toHaveLength(3);
-  });
+function session():SensorSession {
+ const start=Date.parse('2026-11-04T00:00:00Z');
+ return {schemaVersion:'aurorasense.sensor.v1',id:'synthetic-test',kind:'SYNTHETIC',sourceId:'AURORASENSE_TEST_GENERATOR',frame:'DEVICE',unit:'microT',startedAtUtc:new Date(start).toISOString(),endedAtUtc:new Date(start+180000).toISOString(),utcAnchor:{sensorTimestampSeconds:0,utc:new Date(start).toISOString(),uncertaintyMs:null},nominalHz:10,device:{platform:'test',model:null,sensor:'test-generator',calibration:'OS_CALIBRATED_ACCURACY_UNKNOWN'},consent:{adultConfirmed:true,recording:true,version:'test',atUtc:new Date(start).toISOString()},stopReason:'DURATION_COMPLETE',markers:[],samples:Array.from({length:1801},(_,i)=>({x:0,y:0,z:50+(i>1200?.7:0),sensorTimestampSeconds:i/10,receivedMonotonicMs:i*100,receivedAtUtc:new Date(start+i*100).toISOString(),accelerationG:{x:0,y:0,z:1},accelerationAgeMs:0}))};
+}
+describe('local session interpretation',()=>{
+ it('does not convert a large synthetic local excursion to a planetary storm',()=>{
+  const s=session(),qc=analyzeSensorSession(s),r=evaluateSessionPrescriptively(s,qc);
+  expect(r.activityLevel.p95DeltaNt).toBeCloseTo(700);
+  expect(r.activityLevel.tier).toBe('LOCAL_VERY_LARGE');
+  expect(r.activityLevel.kpEstimate).toBe('Not inferable from a phone');
+  expect(r.activityLevel.scientificMeaning).toContain('INCONCLUSIVE');
+  expect(r.placementQuality.score).toBe(100);
+  expect(r.timelineStory).toHaveLength(3);
+  expect(r.prescriptiveGuidance.join(' ')).toContain('SYNTHETIC');
+ });
+ it('leaves missing baseline/high-water values unknown without invented noise or p95',()=>{
+  const s=session();s.samples=s.samples.slice(0,2);
+  const r=evaluateSessionPrescriptively(s,analyzeSensorSession(s));
+  expect(r.placementQuality.rating).toBe('UNKNOWN');
+  expect(r.placementQuality.noiseMadNt).toBeNull();
+  expect(r.activityLevel.maxDeltaNt).toBeNull();expect(r.activityLevel.p95DeltaNt).toBeNull();expect(r.activityLevel.driftNt).toBeNull();
+  expect(r.timelineStory).toEqual([]);expect(r.activityLevel.tier).toBe('UNAVAILABLE');
+ });
+ it('does not infer a charger or placement cause from QC rejection and excludes flagged timeline samples',()=>{
+  const s=session(),qc=analyzeSensorSession(s);qc.accepted=false;qc.flags=['MOTION'];qc.sampleResults.forEach(r=>r.usable=false);qc.usableCount=0;
+  const r=evaluateSessionPrescriptively(s,qc);
+  expect(r.placementQuality.badgeText).toBe('QC FLAGGED');expect(r.placementQuality.score).toBe(0);
+  expect(r.timelineStory).toEqual([]);expect(r.placementQuality.explanation).toContain('does not identify');
+ });
+ it('reports a true median for even sample counts and respects finite QC values',()=>{
+  const s=session(),qc=analyzeSensorSession(s);qc.highWater[0].p95AbsoluteDeltaNt=NaN;qc.noiseMadNt=Infinity;
+  const r=evaluateSessionPrescriptively(s,qc);expect(r.activityLevel.p95DeltaNt).toBeNull();expect(r.placementQuality.noiseMadNt).toBeNull();expect(JSON.stringify(r)).not.toContain('NaN');
+ });
 });

@@ -1,0 +1,18 @@
+{
+  "kind": "LIVE_PUBLIC_SOURCE_ACQUISITION_CHECK",
+  "capturedAtUtc": "2026-11-04T12:08:25.382Z",
+  "scientificForecastValidation": false,
+  "privateDataTransmitted": false,
+  "modelCalled": false,
+  "errors": [],
+  "manifests": [
+    {"sourceId":"ovation","sourceUrl":"https://services.swpc.noaa.gov/json/ovation_aurora_latest.json","retrievedAtUtc":"2026-11-04T12:08:25.133Z","sha256":"5330f2a85ccd3d4f9d0cd95354153eb3c9ad53bd2eb6ebd5f8470d0a84c711d5"},
+    {"sourceId":"mag","sourceUrl":"https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json","retrievedAtUtc":"2026-11-04T12:08:25.173Z","sha256":"2ad6713d04f9589c1c906464e44e7ad953992ad15b9ba43446d4796b5184dd2d"},
+    {"sourceId":"wind","sourceUrl":"https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json","retrievedAtUtc":"2026-11-04T12:08:25.067Z","sha256":"915adc5d60cc14fc631cacd6c712739b8a06fed62adc4e01ef13b8d755138d51"},
+    {"sourceId":"kp","sourceUrl":"https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json","retrievedAtUtc":"2026-11-04T12:08:25.298Z","sha256":"8a32c8af90bd3f3859b6bf823434e2cc8f3e0101bd6d66b10e1b954451d1375e"}
+  ],
+  "ovation":{"retainedCells":16380,"observedAtUtc":"2026-11-04T12:02:00.000Z","validAtUtc":"2026-11-04T13:05:00.000Z"},
+  "solarWind":{"retainedSamples":120,"duplicateRowsCollapsed":3,"ambiguousMinutes":0,"latestMag":{"observedAtUtc":"2026-11-04T12:05:00.000Z","bzNt":-0.97,"frame":"GSM"},"latestPlasma":{"observedAtUtc":"2026-11-04T12:04:00.000Z","speedKmS":408.1,"densityCm3":1.93}},
+  "kp":{"observedAtUtc":"2026-11-04T09:00:00.000Z","kp":2.33},
+  "limitations":["One acquisition only; not continuous uptime or forecast accuracy.","Raw public source responses were hashed during the check; this metadata file is not a substitute for archived raw-response bytes.","Current weather context remains incomplete; no calibrated personal aurora probability established."]
+}

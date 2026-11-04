@@ -22,5 +22,6 @@ export const LOCATIONS = [
   {name:'Boulder region',latitude:40,longitude:-105},
   {name:'Fairbanks region',latitude:65,longitude:-148},
   {name:'Tromsø region',latitude:70,longitude:19},
+  {name:'Florida region',latitude:28,longitude:-82},
   {name:'Hobart region',latitude:-43,longitude:147},
 ];

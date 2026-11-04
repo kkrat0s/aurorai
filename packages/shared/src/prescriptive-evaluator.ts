@@ -1,224 +1,51 @@
-import type { SensorQcResult, SensorSession } from './sensor';
+import { median, type SensorQcResult, type SensorSession } from './sensor';
 
-export type PlacementQualityRating = 'EXCELLENT' | 'FAIR' | 'POOR';
-export type SpaceWeatherActivityTier = 'G0_QUIET' | 'G1_G2_MODERATE' | 'G3_G4_SEVERE' | 'G5_EXTREME';
-
-export interface PrescriptiveTimelineInterval {
-  intervalLabel: string;
-  startMinute: number;
-  endMinute: number;
-  medianDeltaNt: number;
-  peakDeltaNt: number;
-  description: string;
-}
-
+export type PlacementQualityRating = 'EXCELLENT' | 'FAIR' | 'POOR' | 'UNKNOWN';
+/** Display bins for local amplitude only; these are not NOAA G levels or detection thresholds. */
+export type SpaceWeatherActivityTier = 'UNAVAILABLE' | 'LOCAL_SMALL' | 'LOCAL_MODERATE' | 'LOCAL_LARGE' | 'LOCAL_VERY_LARGE';
+export interface PrescriptiveTimelineInterval { intervalLabel:string; startMinute:number; endMinute:number; medianDeltaNt:number; peakDeltaNt:number; description:string }
 export interface PrescriptiveSessionReport {
-  placementQuality: {
-    rating: PlacementQualityRating;
-    score: number; // 0 to 100
-    label: string;
-    badgeText: string;
-    color: string;
-    noiseMadNt: number;
-    explanation: string;
-    actionAdvice: string;
-  };
-  activityLevel: {
-    tier: SpaceWeatherActivityTier;
-    label: string;
-    badgeText: string;
-    color: string;
-    kpEstimate: string;
-    maxDeltaNt: number;
-    p95DeltaNt: number;
-    driftNt: number;
-    explanation: string;
-    scientificMeaning: string;
-  };
-  timelineStory: PrescriptiveTimelineInterval[];
-  prescriptiveGuidance: string[];
+  placementQuality:{rating:PlacementQualityRating;score:number|null;label:string;badgeText:string;color:string;noiseMadNt:number|null;explanation:string;actionAdvice:string};
+  activityLevel:{tier:SpaceWeatherActivityTier;label:string;badgeText:string;color:string;kpEstimate:string;maxDeltaNt:number|null;p95DeltaNt:number|null;driftNt:number|null;explanation:string;scientificMeaning:string};
+  timelineStory:PrescriptiveTimelineInterval[];prescriptiveGuidance:string[];
 }
-
-/**
- * Evaluates a completed sensor session and produces a clear,
- * color-coded (Green/Yellow/Orange) diagnostic report explaining:
- * 1. Was the phone placed properly? (Sensor Placement Quality)
- * 2. What do the magnetic readings actually mean? (Space Weather Activity Level)
- * 3. What happened over time? (Prescriptive Timeline Story)
- */
-export function evaluateSessionPrescriptively(
-  session: SensorSession,
-  qc: SensorQcResult
-): PrescriptiveSessionReport {
-  const noiseMadNt = qc.noiseMadNt ?? 100.0;
-  const highWater = qc.highWater?.[0];
-  const maxDeltaNt = highWater?.maximumAbsoluteDeltaNt ?? Math.abs(qc.driftNt ?? 0);
-  const p95DeltaNt = highWater?.p95AbsoluteDeltaNt ?? maxDeltaNt * 0.65;
-  const driftNt = qc.driftNt ?? 0;
-
-  // 1. Placement Quality (Green / Yellow / Orange)
-  let placementRating: PlacementQualityRating = 'EXCELLENT';
-  let placementScore = 95;
-  let placementLabel = '🟢 Excellent Placement (Quiet Baseline)';
-  let placementBadge = 'EXCELLENT PLACEMENT';
-  let placementColor = '#20c997'; // Mint green
-  let placementExplanation =
-    'Your phone was placed on an optimal, motionless surface. Sensor thermal noise was well below the 250 nT limit with zero motion or orientation errors.';
-  let placementAction = 'Outstanding position. Continue using this exact observation spot (e.g. windowsill or non-magnetic table).';
-
-  if (!qc.accepted || qc.flags.includes('NOISY_BASELINE') || noiseMadNt > 250.0 || qc.flags.includes('MOTION')) {
-    placementRating = 'POOR';
-    placementScore = 35;
-    placementLabel = '🟠 Poor Placement / High Interference';
-    placementBadge = 'POOR PLACEMENT';
-    placementColor = '#ff6b6b'; // Red/Coral
-    placementExplanation =
-      'High noise floor or device movement detected. The phone was disturbed or placed too close to electrical appliances, steel rebar, or chargers.';
-    placementAction =
-      'Elevate the phone on a wooden, plastic or cardboard block on a windowsill, step back 1 meter, and do not touch the phone during the 10-minute run.';
-  } else if (noiseMadNt >= 100.0 || qc.flags.length > 0) {
-    placementRating = 'FAIR';
-    placementScore = 70;
-    placementLabel = '🟡 Fair Placement (Moderate Ambient Noise)';
-    placementBadge = 'FAIR PLACEMENT';
-    placementColor = '#ffd58c'; // Amber/Yellow
-    placementExplanation =
-      'Acceptable baseline, but elevated local jitter was detected. Some nearby electrical wiring or subtle floor vibrations influenced the sensor.';
-    placementAction =
-      'Try placing the phone on a firmer windowsill or wooden chair further away from AC power bricks, laptops, and metallic desk legs.';
-  } else {
-    // Fine tune score based on how quiet the baseline is
-    placementScore = Math.max(80, Math.min(99, Math.round(100 - (noiseMadNt / 100) * 20)));
+function finite(value:number|null|undefined):number|null { return typeof value==='number'&&Number.isFinite(value)?value:null; }
+/** Interpret existing deterministic QC, never infer a physical cause or a storm from one phone. */
+export function evaluateSessionPrescriptively(session:SensorSession,qc:SensorQcResult):PrescriptiveSessionReport {
+  const noiseMadNt=finite(qc.noiseMadNt), highWater=qc.highWater[0];
+  const maxDeltaNt=finite(highWater?.maximumAbsoluteDeltaNt),p95DeltaNt=finite(highWater?.p95AbsoluteDeltaNt),driftNt=finite(qc.driftNt);
+  const baselineReady=finite(qc.baselineMicroT)!==null&&!qc.flags.includes('BASELINE_PENDING');
+  let rating:PlacementQualityRating='UNKNOWN',label='Baseline not established',badgeText='QC INCOMPLETE',color='#aeb9c8';
+  let explanation='A complete baseline and motion context are required before interpreting recording quality. Placement and interference sources have not been established.';
+  const actionAdvice='Keep the phone stationary, record touch/charging context, and repeat controlled present/absent tests. A quiet trace does not establish sensor calibration.';
+  if(baselineReady&&noiseMadNt!==null){
+    if(!qc.accepted){rating='POOR';label='Recording flagged by QC';badgeText='QC FLAGGED';color='#ff6b6b';}
+    else if(qc.flags.length||noiseMadNt>=100){rating='FAIR';label='Usable samples with quality limitations';badgeText='QC WITH LIMITATIONS';color='#ffd58c';}
+    else {rating='EXCELLENT';label='Low local baseline variation';badgeText='QC ACCEPTED';color='#20c997';}
+    explanation=`Baseline magnitude MAD is ${noiseMadNt.toFixed(1)} nT; ${qc.usableCount}/${qc.sampleCount} samples passed the current engineering screen. ${qc.flags.length?`Flags: ${qc.flags.join(', ')}.`:'No flags in this recording.'} This does not identify a noisy surface, thermal noise, or a geomagnetic source.`;
   }
-
-  // 2. Space Weather Activity Level (Green / Yellow / Orange / Red)
-  let activityTier: SpaceWeatherActivityTier = 'G0_QUIET';
-  let activityLabel = '🟢 Quiet Earth Baseline';
-  let activityBadge = 'G0 QUIET (< 60 nT)';
-  let activityColor = '#20c997'; // Green
-  let kpEstimate = 'Kp 0–3';
-  let activityExplanation =
-    "Earth's magnetic field remained quiet and undisturbed at your location. Core dynamo background only.";
-  let scientificMeaning =
-    'Minimal solar wind coupling at the magnetopause. No significant space weather storm detected.';
-
-  if (p95DeltaNt >= 500.0) {
-    activityTier = 'G5_EXTREME';
-    activityLabel = '🔴 Extreme Space Weather / Severe Anomaly';
-    activityBadge = 'G5 EXTREME (> 500 nT)';
-    activityColor = '#ff5252'; // Deep Red
-    kpEstimate = 'Kp 9';
-    activityExplanation = `Massive excursion detected (+${p95DeltaNt.toFixed(0)} nT sustained, peak ${maxDeltaNt.toFixed(0)} nT). Matches historic extreme space weather events (like the May 10, 2024 Gannon storm).`;
-    scientificMeaning =
-      'Severe magnetospheric compression. If verified across independent regional stations, this indicates major ionospheric electrojet disruption.';
-  } else if (p95DeltaNt >= 200.0 || Math.abs(driftNt) >= 200.0) {
-    activityTier = 'G3_G4_SEVERE';
-    activityLabel = '🟠 Candidate Space Weather Perturbation (Severe G3–G4)';
-    activityBadge = 'G3–G4 SEVERE (200–500 nT)';
-    activityColor = '#00e5ff'; // Cyan / Orange
-    kpEstimate = 'Kp 7–8';
-    activityExplanation = `Significant sustained magnetic excursion detected (${p95DeltaNt.toFixed(0)} nT sustained high-water, ${Math.abs(driftNt).toFixed(0)} nT net drift). The field underwent a slow, substantial departure from the baseline.`;
-    scientificMeaning =
-      'Strong southward interplanetary magnetic field (IMF Bz) coupling with Earth’s magnetosphere. A single phone cannot confirm regional storms alone—submit to central database to cross-validate!';
-  } else if (p95DeltaNt >= 60.0 || Math.abs(driftNt) >= 60.0) {
-    activityTier = 'G1_G2_MODERATE';
-    activityLabel = '🟡 Moderate Magnetic Disturbance (G1–G2)';
-    activityBadge = 'G1–G2 MODERATE (60–200 nT)';
-    activityColor = '#ffd58c'; // Yellow
-    kpEstimate = 'Kp 5–6';
-    activityExplanation = `Noticeable magnetic field drift of ${p95DeltaNt.toFixed(0)} nT. Exceeds standard sensor noise and enters the detectability zone for minor-to-moderate geomagnetic storms.`;
-    scientificMeaning =
-      'Minor coronal hole high-speed stream or moderate CME impact driving sub-auroral ionospheric currents.';
+  const score=qc.sampleCount>0?Math.round(100*Math.max(0,Math.min(1,qc.usableCount/qc.sampleCount))):null;
+  let tier:SpaceWeatherActivityTier='UNAVAILABLE',activityLabel='Local variation unavailable',activityBadge='NO USABLE DELTA',activityColor='#aeb9c8';
+  if(p95DeltaNt!==null){
+    if(p95DeltaNt<60){tier='LOCAL_SMALL';activityLabel='Small local variation';activityColor='#20c997';}
+    else if(p95DeltaNt<200){tier='LOCAL_MODERATE';activityLabel='Moderate local variation';activityColor='#ffd58c';}
+    else if(p95DeltaNt<500){tier='LOCAL_LARGE';activityLabel='Large local variation';activityColor='#00e5ff';}
+    else {tier='LOCAL_VERY_LARGE';activityLabel='Very large local variation';activityColor='#ff5252';}
+    activityBadge=`LOCAL p95 ${p95DeltaNt.toFixed(0)} nT`;
   }
-
-  // 3. Timeline Breakdown (Minute-by-minute Story)
-  const timelineStory: PrescriptiveTimelineInterval[] = [];
-  const samples = session.samples;
-  if (samples.length >= 100) {
-    const t0 = samples[0].sensorTimestampSeconds;
-    const baseMag = qc.baselineMicroT ?? 46.0;
-
-    // Segment into 3 natural acts: Baseline (0-2m or 1st third), Mid, Late
-    const totalDuration = samples[samples.length - 1].sensorTimestampSeconds - t0;
-    const windows = totalDuration > 200
-      ? [
-          { start: 0, end: 120, label: 'Minutes 0–2 (Fixed Baseline)' },
-          { start: 120, end: Math.min(360, totalDuration * 0.6), label: `Minutes 2–${Math.round(Math.min(360, totalDuration * 0.6) / 60)} (Mid Observation)` },
-          { start: Math.min(360, totalDuration * 0.6), end: totalDuration + 1, label: `Minutes ${Math.round(Math.min(360, totalDuration * 0.6) / 60)}–${Math.round(totalDuration / 60)} (Late Progression)` },
-        ]
-      : [
-          { start: 0, end: totalDuration / 3, label: 'Phase 1: Initial Baseline' },
-          { start: totalDuration / 3, end: (2 * totalDuration) / 3, label: 'Phase 2: Mid Observation' },
-          { start: (2 * totalDuration) / 3, end: totalDuration + 1, label: 'Phase 3: Final Interval' },
-        ];
-
-    for (const w of windows) {
-      const winSamples = samples.filter(
-        (s) => s.sensorTimestampSeconds - t0 >= w.start && s.sensorTimestampSeconds - t0 < w.end
-      );
-      if (winSamples.length === 0) continue;
-
-      const deltas = winSamples.map((s) => {
-        const mag = Math.sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
-        return (mag - baseMag) * 1000;
-      });
-      deltas.sort((a, b) => a - b);
-      const medianD = deltas[Math.floor(deltas.length / 2)];
-      const maxAbsD = Math.max(Math.abs(deltas[0]), Math.abs(deltas[deltas.length - 1]));
-
-      let desc = '';
-      if (w.start === 0) {
-        desc = `Calm baseline established at ${baseMag.toFixed(1)} µT with ${noiseMadNt.toFixed(1)} nT noise floor. Phone motionless.`;
-      } else if (medianD > 50) {
-        desc = `Field drifted upward by +${medianD.toFixed(0)} nT (peak +${maxAbsD.toFixed(0)} nT).`;
-      } else if (medianD < -50) {
-        desc = `Field dropped significantly by ${medianD.toFixed(0)} nT below baseline (trough ${deltas[0].toFixed(0)} nT).`;
-      } else {
-        desc = `Field remained near baseline (${medianD > 0 ? '+' : ''}${medianD.toFixed(0)} nT drift).`;
-      }
-
-      timelineStory.push({
-        intervalLabel: w.label,
-        startMinute: w.start / 60,
-        endMinute: w.end / 60,
-        medianDeltaNt: medianD,
-        peakDeltaNt: maxAbsD,
-        description: desc,
-      });
+  const scientificMeaning='A phone magnitude deviation cannot determine Kp, NOAA G severity, solar-wind coupling, magnetic reconnection, or visible aurora. Regional origin remains INCONCLUSIVE without aligned independent measurements.';
+  const activityExplanation=p95DeltaNt===null?'No QC-usable high-water statistic is available. No replacement value has been estimated.':`The 95th percentile of absolute baseline-relative deviations among QC-usable samples is ${p95DeltaNt.toFixed(0)} nT${maxDeltaNt===null?'':`, with peak ${maxDeltaNt.toFixed(0)} nT`}. These are local scalar |B| measurements in nT, not planetary storm severity. ${highWater?.completeWindow?'The requested high-water window is complete.':'The requested high-water window has incomplete time coverage.'}`;
+  const timelineStory:PrescriptiveTimelineInterval[]=[];
+  const t0=session.samples[0]?.sensorTimestampSeconds,tn=session.samples.at(-1)?.sensorTimestampSeconds;
+  if(baselineReady&&t0!==undefined&&tn!==undefined&&Number.isFinite(t0)&&Number.isFinite(tn)&&tn>t0&&qc.sampleResults.length===session.samples.length){
+    const duration=tn-t0;
+    for(let phase=0;phase<3;phase++){
+      const start=duration*phase/3,end=duration*(phase+1)/3;
+      const deltas=session.samples.flatMap((s,i)=>{const t=s.sensorTimestampSeconds-t0,row=qc.sampleResults[i];return Number.isFinite(t)&&t>=start&&(phase===2?t<=end:t<end)&&row.usable&&finite(row.deltaNt)!==null?[row.deltaNt!]:[];});
+      const medianDeltaNt=median(deltas);if(medianDeltaNt===null)continue;
+      const peakDeltaNt=deltas.reduce((p,d)=>Math.max(p,Math.abs(d)),0);
+      timelineStory.push({intervalLabel:`Interval ${phase+1}: QC-usable samples`,startMinute:start/60,endMinute:end/60,medianDeltaNt,peakDeltaNt,description:`${deltas.length} QC-usable samples: median signed deviation ${medianDeltaNt.toFixed(0)} nT, peak absolute deviation ${peakDeltaNt.toFixed(0)} nT. Cause is not determined.`});
     }
   }
-
-  // 4. Prescriptive Guidance
-  const prescriptiveGuidance: string[] = [
-    `Placement Quality: ${placementBadge} (${noiseMadNt.toFixed(1)} nT noise) — ${placementAction}`,
-    `Space Weather Scale: ${activityBadge} — ${activityExplanation}`,
-    'Next Action: Submit this recording to the central database to cross-check regional coherence with USGS Boulder and independent phones.',
-  ];
-
-  return {
-    placementQuality: {
-      rating: placementRating,
-      score: placementScore,
-      label: placementLabel,
-      badgeText: placementBadge,
-      color: placementColor,
-      noiseMadNt,
-      explanation: placementExplanation,
-      actionAdvice: placementAction,
-    },
-    activityLevel: {
-      tier: activityTier,
-      label: activityLabel,
-      badgeText: activityBadge,
-      color: activityColor,
-      kpEstimate,
-      maxDeltaNt,
-      p95DeltaNt,
-      driftNt,
-      explanation: activityExplanation,
-      scientificMeaning,
-    },
-    timelineStory,
-    prescriptiveGuidance,
-  };
+  return {placementQuality:{rating,score,label,badgeText,color,noiseMadNt,explanation,actionAdvice},activityLevel:{tier,label:activityLabel,badgeText:activityBadge,color:activityColor,kpEstimate:'Not inferable from a phone',maxDeltaNt,p95DeltaNt,driftNt,explanation:activityExplanation,scientificMeaning},timelineStory,prescriptiveGuidance:[`Recording quality: ${badgeText}. ${actionAdvice}`,`Local variation: ${activityExplanation}`,`Next: compare timestamp-aligned scalar variations against a professional reference and independently located phones. A remote station or historical archive is context, not proof of a local cause. ${session.kind==='SYNTHETIC'?'SYNTHETIC recording: this is not measured phone evidence.':''}`]};
 }

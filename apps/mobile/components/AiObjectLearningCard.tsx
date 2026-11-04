@@ -40,15 +40,16 @@ export function AiObjectLearningCard({
 
   if (!classification) return null;
 
-  const { metadata, confidence, signature, solarStormSignalRatio, aiReasoning, fingerprintHash } =
+  const { metadata, confidence, signature, aiReasoning, fingerprintHash } =
     classification;
 
   // Handle User Confirmation: "Yes, Correct!"
   function handleConfirmCorrect() {
     if (!classification) return;
     const fp = createUserLearnedFingerprint(classification, classification.predictedClass);
+    if (!fp.learningEligible) { setFeedbackBanner("Collect a valid, continuous sample before saving a label."); return; }
     onAddFingerprint(fp);
-    setFeedbackBanner(`✨ Learned! Fingerprint #${fingerprintHash} confirmed for ${metadata.shortLabel}.`);
+    setFeedbackBanner(`Saved an unvalidated example for ${metadata.shortLabel}. Repeat in a separate recording window to test it.`);
     setTimeout(() => setFeedbackBanner(null), 4000);
   }
 
@@ -57,11 +58,12 @@ export function AiObjectLearningCard({
     if (!classification) return;
     const label = customLabel.trim() || UNIVERSAL_FINGERPRINT_DATABASE[classId].name;
     const fp = createUserLearnedFingerprint(classification, classId, label);
+    if (!fp.learningEligible) { setFeedbackBanner("Collect a valid, continuous sample before saving a label."); return; }
     onAddFingerprint(fp);
     setTeachModalOpen(false);
     setSelectedCorrectionClass(null);
     setCustomLabel('');
-    setFeedbackBanner(`🧠 Calibrated! AI learned to recognize '${label}' from this vector profile.`);
+    setFeedbackBanner(`Saved local example '${label}'. It is a user label, not calibration or verified identity.`);
     setTimeout(() => setFeedbackBanner(null), 4500);
   }
 
@@ -73,21 +75,21 @@ export function AiObjectLearningCard({
           <View style={styles.titleGroup}>
             <Text style={styles.icon}>{metadata.icon}</Text>
             <View>
-              <Text style={styles.eyebrow}>AI OBJECT GUESS</Text>
+              <Text style={styles.eyebrow}>LOCAL PATTERN LEARNING</Text>
               <Text style={[styles.title, { color: metadata.color }]}>{metadata.name}</Text>
             </View>
           </View>
           <View style={[styles.confidenceBadge, { backgroundColor: `${metadata.color}25` }]}>
             <Text style={[styles.confidenceText, { color: metadata.color }]}>
-              {Math.round(confidence * 100)}% match
+              {classification.evidenceStatus === 'UNKNOWN' || classification.evidenceStatus === 'INSUFFICIENT_DATA' ? 'Unknown' : `${confidence.toFixed(2)} similarity`}
             </Text>
           </View>
         </View>
 
         {/* Dynamic Physics Reasoning: How the AI Guesstimates This */}
         <View style={styles.reasoningBox}>
-          <Text style={styles.reasoningLabel}>💡 How AI Guesses This:</Text>
-          <Text style={styles.reasoningText}>{aiReasoning}</Text>
+          <Text style={styles.reasoningLabel}>💡 Evidence and uncertainty:</Text>
+          <Text style={styles.reasoningText}>{aiReasoning} Scores are uncalibrated, not probabilities.</Text>
         </View>
 
         {/* Multi-Axis Physical Metrics */}
@@ -101,13 +103,13 @@ export function AiObjectLearningCard({
             <Text style={styles.cellValue}>{(signature.polarizationRatio * 100).toFixed(0)}%</Text>
           </View>
           <View style={styles.metricCell}>
-            <Text style={styles.cellLabel}>Switching Jitter</Text>
+            <Text style={styles.cellLabel}>Step Roughness</Text>
             <Text style={styles.cellValue}>{(signature.jitterRatio * 100).toFixed(0)}%</Text>
           </View>
           <View style={styles.metricCell}>
-            <Text style={styles.cellLabel}>Solar Storm Ratio</Text>
-            <Text style={[styles.cellValue, { color: solarStormSignalRatio > 10 ? '#ffd58c' : '#68edc3' }]}>
-              {solarStormSignalRatio}x
+            <Text style={styles.cellLabel}>Sample window</Text>
+            <Text style={[styles.cellValue, { color: '#aeb9c8' }]}>
+              {(signature.durationMs / 1000).toFixed(1)} s · {signature.sampleCount} samples
             </Text>
           </View>
         </View>
@@ -123,10 +125,11 @@ export function AiObjectLearningCard({
         <View style={styles.actionRow}>
           <Pressable
             accessibilityRole="button"
+            disabled={!classification.trainable || classification.predictedClass === 'UNKNOWN_UNCLASSIFIED'}
             onPress={handleConfirmCorrect}
             style={[styles.confirmBtn, { backgroundColor: '#10392c', borderColor: '#20c997' }]}
           >
-            <Text style={styles.confirmBtnText}>👍 Correct!</Text>
+            <Text style={styles.confirmBtnText}>Save my label</Text>
           </Pressable>
 
           <Pressable
@@ -134,7 +137,7 @@ export function AiObjectLearningCard({
             onPress={() => setTeachModalOpen(true)}
             style={[styles.teachBtn, { borderColor: '#7c4dff', backgroundColor: '#21184a' }]}
           >
-            <Text style={styles.teachBtnText}>✎ Teach AI Object</Text>
+            <Text style={styles.teachBtnText}>✎ Teach new pattern</Text>
           </Pressable>
         </View>
 
@@ -142,7 +145,7 @@ export function AiObjectLearningCard({
         <View style={styles.footerRow}>
           <Pressable onPress={() => setHistoryModalOpen(true)} style={styles.counterLink}>
             <Text style={styles.counterText}>
-              🧠 {userFingerprints.length} Learned Fingerprints Active
+              🧠 {userFingerprints.length} Unvalidated local examples
             </Text>
           </Pressable>
           <Text style={styles.hashText}>Hash: {fingerprintHash}</Text>
@@ -155,7 +158,7 @@ export function AiObjectLearningCard({
           style={styles.scienceGuideBtn}
         >
           <Text style={styles.scienceGuideBtnText}>
-            ☀️ What Magnetic Level Detects Solar Reconnection?
+            ☀️ What can a phone measurement establish?
           </Text>
         </Pressable>
       </View>
@@ -165,11 +168,10 @@ export function AiObjectLearningCard({
         <View style={styles.modalRoot}>
           <ScrollView contentContainerStyle={styles.modalScroll}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalEyebrow}>UNIVERSAL ELECTROMAGNETIC DATABASE</Text>
-              <Text style={styles.modalTitle}>Teach AI What Caused This Field</Text>
+              <Text style={styles.modalEyebrow}>LOCAL USER-LABELED EXAMPLES</Text>
+              <Text style={styles.modalTitle}>Label a controlled local example</Text>
               <Text style={styles.modalSubtitle}>
-                Tell the AI what object is near your phone. It will record the current 3-axis electrodynamic
-                fingerprint and dynamically adapt its classification weights.
+                Label the object you deliberately introduced. A bounded nearest-example matcher compares later, non-overlapping windows in matching device and motion context. A label does not establish causation or measured accuracy.
               </Text>
             </View>
 
@@ -184,7 +186,7 @@ export function AiObjectLearningCard({
 
             {/* Custom Nickname Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Optional Custom Label / Brand:</Text>
+              <Text style={styles.inputLabel}>Custom label (required for a new object):</Text>
               <TextInput
                 style={styles.textInput}
                 placeholder="e.g. MacBook Pro M3, Anker USB-C, Milanese Watch"
@@ -195,9 +197,9 @@ export function AiObjectLearningCard({
             </View>
 
             {/* Object Selection List */}
-            <Text style={styles.sectionHeader}>Select Real Physical Object:</Text>
+            <Text style={styles.sectionHeader}>Select a candidate category or Unknown for a new object:</Text>
             <View style={styles.classList}>
-              {Object.values(UNIVERSAL_FINGERPRINT_DATABASE).map((entry) => (
+              {Object.values(UNIVERSAL_FINGERPRINT_DATABASE).filter(entry => entry.id !== 'GEOMAGNETIC_SOLAR_DISTURBANCE').map((entry) => (
                 <Pressable
                   key={entry.id}
                   accessibilityRole="button"
@@ -223,14 +225,14 @@ export function AiObjectLearningCard({
             <View style={styles.modalBtnRow}>
               <Pressable
                 accessibilityRole="button"
-                disabled={!selectedCorrectionClass}
+                disabled={!classification.trainable || !selectedCorrectionClass || (selectedCorrectionClass === 'UNKNOWN_UNCLASSIFIED' && !customLabel.trim())}
                 onPress={() => selectedCorrectionClass && handleTeachSubmit(selectedCorrectionClass)}
                 style={[
                   styles.saveBtn,
                   { opacity: selectedCorrectionClass ? 1.0 : 0.4 },
                 ]}
               >
-                <Text style={styles.saveBtnText}>Save & Adapt AI Model</Text>
+                <Text style={styles.saveBtnText}>Save unvalidated example</Text>
               </Pressable>
 
               <Pressable
@@ -253,16 +255,15 @@ export function AiObjectLearningCard({
               <Text style={styles.modalEyebrow}>ACTIVE KNOWLEDGE REPOSITORY</Text>
               <Text style={styles.modalTitle}>Your Learned Fingerprints</Text>
               <Text style={styles.modalSubtitle}>
-                These confirmed fingerprints are cached in your device’s memory to personalize local disturbance
-                detection without transmitting raw magnetic data.
+                These examples personalize local pattern matching. Their labels are unverified; repeated taps and overlapping windows do not count as independent validation.
               </Text>
             </View>
 
             {userFingerprints.length === 0 ? (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyText}>No user fingerprints confirmed yet.</Text>
+                <Text style={styles.emptyText}>No local examples saved yet.</Text>
                 <Text style={styles.emptySubtext}>
-                  Tap [ 👍 Correct! ] or [ ✎ Teach AI Object ] when disturbing the phone with objects to build your library.
+                  Tap [ Save my label ] or [ ✎ Teach new pattern ] when disturbing the phone with objects to build your library.
                 </Text>
               </View>
             ) : (
@@ -316,15 +317,14 @@ export function AiObjectLearningCard({
           <ScrollView contentContainerStyle={styles.modalScroll}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalEyebrow}>SPACE WEATHER SCIENCE & SENSOR LIMITS</Text>
-              <Text style={styles.modalTitle}>Detecting Earth's Solar Reconnection</Text>
+              <Text style={styles.modalTitle}>Phone evidence and its limits</Text>
               <Text style={styles.modalSubtitle}>
-                Understanding what magnetic levels phones can actually measure from coronal mass ejections,
-                how AI isolates space weather from everyday objects, and why windowsill tests work.
+                Phone magnetic variations can have several causes. Regional space-weather interpretation requires synchronized independent references, quality controls and uncertainty.
               </Text>
             </View>
 
             {/* NOAA Space Weather Tiers Grid */}
-            <Text style={styles.sectionHeader}>NOAA Space Weather Ground Tiers (B-Field)</Text>
+            <Text style={styles.sectionHeader}>NOAA planetary G scale (based on Kp)</Text>
             <View style={styles.tierList}>
               {SPACE_WEATHER_GROUND_SCALES.map((tier) => (
                 <View key={tier.noaaScale} style={styles.tierCard}>
@@ -335,7 +335,7 @@ export function AiObjectLearningCard({
                     <View style={{ flex: 1 }}>
                       <Text style={styles.tierName}>{tier.name}</Text>
                       <Text style={styles.tierPerturbation}>
-                        Δ|B|: {tier.groundPerturbationNanoT[0]}–{tier.groundPerturbationNanoT[1]} nT ({tier.kpIndex})
+                        {tier.kpIndex} · No universal local nT conversion
                       </Text>
                     </View>
                   </View>
@@ -349,34 +349,32 @@ export function AiObjectLearningCard({
             </View>
 
             {/* Granite Window Sill Mineralogy & Zero Calibration */}
-            <Text style={styles.sectionHeader}>🪨 The Granite Window Sill Phenomenon</Text>
+            <Text style={styles.sectionHeader}>🪨 Surface and placement checks</Text>
             <View style={styles.graniteBox}>
-              <Text style={styles.graniteTitle}>Why did your window sill read 250–450 nT?</Text>
+              <Text style={styles.graniteTitle}>A surface has not been characterized by a phone trace</Text>
               <Text style={styles.graniteText}>
                 <Text style={{ fontWeight: '700', color: '#ffd58c' }}>Mineral Magnetism: </Text>
-                {GRANITE_WINDOWSILL_PHYSICS.materialComposition} These minerals retain a permanent static remanence
-                of {GRANITE_WINDOWSILL_PHYSICS.staticPermeabilityOffsetNt[0]}–{GRANITE_WINDOWSILL_PHYSICS.staticPermeabilityOffsetNt[1]} nT.
+                {GRANITE_WINDOWSILL_PHYSICS.materialComposition}
               </Text>
               <Text style={[styles.graniteText, { marginTop: 8 }]}>
-                <Text style={{ fontWeight: '700', color: '#68edc3' }}>Window Sill Advantage: </Text>
+                <Text style={{ fontWeight: '700', color: '#68edc3' }}>Nearby conditions: </Text>
                 {GRANITE_WINDOWSILL_PHYSICS.windowSillAdvantage}
               </Text>
               <View style={styles.zeroStepBox}>
-                <Text style={styles.zeroStepTitle}>↺ ZERO CALIBRATION PROTOCOL:</Text>
+                <Text style={styles.zeroStepTitle}>↺ DISPLAY ZERO PROTOCOL:</Text>
                 <Text style={styles.zeroStepText}>{GRANITE_WINDOWSILL_PHYSICS.zeroCalibrationProtocol}</Text>
               </View>
             </View>
 
             {/* AI Discrimination Physics */}
-            <Text style={styles.sectionHeader}>🧠 How AI Differentiates Solar Storms vs. Local Objects</Text>
+            <Text style={styles.sectionHeader}>🧠 Why source identification remains uncertain</Text>
             <View style={styles.aiRulesCard}>
               <View style={styles.ruleRow}>
                 <Text style={styles.ruleIcon}>⏱️</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.ruleTitle}>Rate of Change (dB/dt) — The Primary Discriminator</Text>
+                  <Text style={styles.ruleTitle}>Rate of change is a descriptive feature</Text>
                   <Text style={styles.ruleText}>
-                    Solar reconnection ionospheric currents evolve over minutes to hours (dB/dt &lt; 0.20 µT/s).
-                    Moving hands or smartwatches shift fields in seconds (dB/dt &gt; 1.0–5.0 µT/s) — over 1,000x faster!
+                    Fast or slow changes can occur for several reasons. Rate of change alone cannot separate a local object, sensor drift and a geomagnetic disturbance.
                   </Text>
                 </View>
               </View>
@@ -386,8 +384,7 @@ export function AiObjectLearningCard({
                 <View style={{ flex: 1 }}>
                   <Text style={styles.ruleTitle}>Multi-Modal Motion &amp; Touch Context</Text>
                   <Text style={styles.ruleText}>
-                    The AI checks that the phone is in verified accelerometer STANDSTILL and HANDS OFF capacitive screen contact.
-                    If the phone moves or is touched, solar disturbance is ruled out.
+                    Motion and screen interaction mark possible contamination. They cannot rule out a simultaneous geomagnetic event; contaminated data must not be treated as independent regional evidence.
                   </Text>
                 </View>
               </View>
@@ -398,8 +395,7 @@ export function AiObjectLearningCard({
                   <Text style={styles.ruleTitle}>Scientific Verification Boundary</Text>
                   <Text style={styles.ruleText}>
                     Per strict physical invariants: a single phone or co-located pair can NEVER establish a regional
-                    reconnection event alone. A candidate classification requires USGS Boulder (BOU) validation and
-                    independent geographically separated sensors.
+                    disturbance alone. Interpretation requires geographically appropriate, synchronized professional references and independent sites; a distant BOU station is context, not local validation.
                   </Text>
                 </View>
               </View>

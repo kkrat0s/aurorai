@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { runDemoCoordinator, type DemoCoordinatorResult, META_TOOLS } from '@aurorasense/coordinator';
+import recordedRun from '../../../docs/meta-run-verification-2026-11-04.json';
 
 interface MuseSparkDrawerProps {
   visible: boolean;
@@ -31,6 +32,7 @@ const colors = {
 export function MuseSparkDrawer({ visible, onClose, hasLocalSession = false }: MuseSparkDrawerProps) {
   const [coordinatorResult, setCoordinatorResult] = useState<DemoCoordinatorResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [showRecordedActions, setShowRecordedActions] = useState(false);
 
   function handleRunCoordinator() {
     setIsRunning(true);
@@ -48,8 +50,8 @@ export function MuseSparkDrawer({ visible, onClose, hasLocalSession = false }: M
           {/* TOP BAR */}
           <View style={styles.sheetHeader}>
             <View>
-              <Text style={styles.superTitle}>OBSERVATION COORDINATOR · META MODEL API</Text>
-              <Text style={styles.sheetTitle}>Muse Spark 1.3 Policy &amp; Tools</Text>
+              <Text style={styles.superTitle}>OBSERVATION COORDINATOR</Text>
+              <Text style={styles.sheetTitle}>Muse Spark 1.3 · Evidence &amp; Tools</Text>
             </View>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
@@ -57,6 +59,26 @@ export function MuseSparkDrawer({ visible, onClose, hasLocalSession = false }: M
           </View>
 
           <ScrollView style={styles.bodyScroll}>
+            <View style={styles.questionCard}>
+              <Text style={styles.questionTitle}>Recorded real Muse Spark run</Text>
+              <Text style={styles.questionBody}>
+                {recordedRun.model} · as of {recordedRun.recordedAtUtc}{'\n'}
+                {recordedRun.modelRequestAttempts} actual requests · ${recordedRun.estimatedUsd.toFixed(5)} estimated usage.
+              </Text>
+              <Text style={styles.questionBody}>
+                Spark inspected real USGS Boulder data and found zero independent phone observations. Its observation request was blocked because delivery is not configured. The deterministic validator concluded INCONCLUSIVE.
+              </Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Inspect recorded model-selected actions" accessibilityState={{ expanded: showRecordedActions }} onPress={() => setShowRecordedActions(value => !value)} style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>{showRecordedActions ? '−' : '+'}</Text>
+              </Pressable>
+              {showRecordedActions && <View>
+                {recordedRun.actions.map(action => <Text key={action.sequence} style={styles.auditItem}>{action.sequence}. {action.tool} · {action.status}</Text>)}
+                <Text style={styles.questionBody}>Source: USGS BOU · scalar F · nT · measured through {recordedRun.source.latestObservedAtUtc}.</Text>
+                <Text style={styles.auditSub}>SHA-256: {recordedRun.source.sha256}</Text>
+                <Text style={styles.questionBody}>{recordedRun.reports[0].summary}</Text>
+              </View>}
+              <Text style={styles.auditSub}>Viewing this dated record makes no new model call. No participant was contacted. Hosted authentication and RLS remain unverified. The workflow below is separate synthetic replay.</Text>
+            </View>
             {/* HONEST EXECUTION MODE BADGES */}
             <View style={styles.badgeRow}>
               <View style={[styles.badgePill, { borderColor: colors.amber }]}>

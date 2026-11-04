@@ -9,9 +9,6 @@ const SCENARIOS: Record<
   {
     badge: string;
     title: string;
-    speedKms: number;
-    bzNt: number;
-    groundNt: string;
     compression: number;
     fieldHex: string;
     auroraHex: string;
@@ -20,39 +17,30 @@ const SCENARIOS: Record<
 > = {
   QUIET_WIND: {
     badge: '🌤️ QUIET SOLAR WIND',
-    title: 'Calm Solar Breeze (~390 km/s)',
-    speedKms: 390,
-    bzNt: -2.1,
-    groundNt: '10–30 nT',
+    title: 'Quiet solar wind · conceptual illustration',
     compression: 0.14,
     fieldHex: '#00e5ff',
     auroraHex: '#20c997',
     summary:
-      "Earth's dipole magnetic shield deflects routine solar wind plasma; ground sensors see only gentle 10–30 nT daily variations.",
+      "Earth's magnetosphere responds to the solar wind; ground variation depends on location, time and current systems.",
   },
   MAY_2024_G5: {
     badge: '🌌 MAY 2024 MOTHER’S DAY G5',
-    title: 'Extreme G5 Storm · 11 KHI Reconnection Cycles',
-    speedKms: 880,
-    bzNt: -41.0,
-    groundNt: '400–700 nT',
+    title: 'May 2024 · conceptual storm illustration',
     compression: 0.54,
     fieldHex: '#a882ff',
     auroraHex: '#ff4081',
     summary:
-      'Successive CME shocks compressed Earth’s shield and triggered Kelvin-Helmholtz vortices & 11 magnetotail reconnection snaps ($500M GPS farming impact).',
+      'Solar-wind disturbances can compress the magnetosphere and transfer energy into it. Animated waves are illustrative, not reconstructed reconnection events.',
   },
   CARRINGTON_1859: {
     badge: '🔥 1859 CARRINGTON SUPERSTORM',
-    title: 'Telegraphs Caught Fire · $2.4T Modern Grid Risk',
-    speedKms: 2150,
-    bzNt: -85.0,
-    groundNt: '1,600–5,000+ nT',
+    title: 'Carrington event · historical context',
     compression: 0.8,
     fieldHex: '#ff5252',
     auroraHex: '#ff1744',
     summary:
-      'In Sept 1859, geomagnetically induced currents sparked fires in telegraph stations and let operators transmit with batteries unplugged. A repeat today threatens global transformers & satellites ($2.4T Lloyd’s estimate).',
+      'The 1859 storm disrupted telegraph communications. Modern space-weather risks include power-grid, satellite, radio and navigation disruption.',
   },
 };
 
@@ -307,33 +295,33 @@ export function SolarMagnetosphere3DCanvas({
     scen: WebStormScenario;
   }> = [
     {
-      era: '600 BC · THALES OF MILETUS',
-      quote: '“The lodestone has a soul, for it moves the iron.”',
-      sub: 'Humanity’s first glimpse of an invisible magnetic force.',
+      era: 'EARLY MAGNETISM · LODESTONES',
+      quote: 'Natural magnets attract iron without touching it.',
+      sub: 'Magnetism connects everyday objects with planetary science.',
       scen: 'QUIET_WIND',
     },
     {
       era: '1600 · WILLIAM GILBERT',
-      quote: '“The Earth itself is a great magnet.”',
+      quote: 'Gilbert described Earth as a magnet.',
       sub: 'A planetary shield born in our molten iron core.',
       scen: 'QUIET_WIND',
     },
     {
-      era: '1831 · FARADAY & MAXWELL',
-      quote: '“Every electric current creates a magnetic field — and every shifting magnetic field induces electricity.”',
-      sub: 'Wires, watches, and solar plasma weave coupled electromagnetic waves.',
+      era: '1831 · MICHAEL FARADAY',
+      quote: 'Changing magnetic flux can induce an electric field.',
+      sub: 'Geomagnetic changes can drive currents in long conductors.',
       scen: 'MAY_2024_G5',
     },
     {
       era: 'SEPTEMBER 1859 · THE CARRINGTON EVENT',
-      quote: 'A solar superstorm struck Earth. Telegraph systems caught fire.',
-      sub: 'Induced ground currents were so strong that operators sent messages with batteries unplugged.',
+      quote: 'An exceptional geomagnetic storm disrupted telegraph communications.',
+      sub: 'Auroras reached unusually low latitudes, including Hawaii and Central America.',
       scen: 'CARRINGTON_1859',
     },
     {
-      era: 'IF 1859 STRIKES TODAY',
-      quote: 'Microprocessors, AI chips, satellites, and transformers would fry in minutes.',
-      sub: 'A direct hit today could send modern civilization back to the Stone Age — unless we monitor Earth’s shield.',
+      era: 'SPACE WEATHER AND MODERN SERVICES',
+      quote: 'Severe space weather can disrupt grids, satellites, radio and navigation.',
+      sub: 'Extreme geomagnetic storms can damage high-voltage transformers. Impacts depend on the event and infrastructure.',
       scen: 'CARRINGTON_1859',
     },
   ];
@@ -413,6 +401,11 @@ export function SolarMagnetosphere3DCanvas({
         </div>
       </div>
 
+      <p style={{ fontSize: '0.72rem', color: '#9db8d6', margin: '0 0 0.5rem' }}>
+        Conceptual animation · not an event reconstruction or damage forecast.{' '}
+        <a href="https://www.spaceweather.gov/impacts" target="_blank" rel="noreferrer">NOAA impacts</a>{' · '}
+        <a href="https://www.noaa.gov/explainers/space-weather-storms-from-sun" target="_blank" rel="noreferrer">NOAA explanation</a>
+      </p>
       <canvas
         ref={canvasRef}
         width={760}

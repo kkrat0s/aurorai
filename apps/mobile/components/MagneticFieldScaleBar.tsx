@@ -20,68 +20,18 @@ interface ScaleZone {
   electrodynamics: string;
 }
 
+// Display ranges only: amplitude does not identify an object or a NOAA G level.
 const SCALE_ZONES: ScaleZone[] = [
-  {
-    id: 'solar_storm',
-    classId: 'GEOMAGNETIC_SOLAR_DISTURBANCE',
-    label: 'Solar Storm',
-    icon: '☀️',
-    rangeNanoT: [50, 500],
-    color: '#4dd0e1',
-    percentRange: [0, 20],
-    description: 'Natural ionospheric reconnection perturbation from CME solar wind (50–500 nT).',
-    electrodynamics: 'Geomagnetic Hall currents in ionosphere ~100 km altitude.',
-  },
-  {
-    id: 'human_hand',
-    classId: 'HUMAN_HAND_GESTURE',
-    label: 'Hand / Body',
-    icon: '🖐️',
-    rangeNanoT: [500, 3800],
-    color: '#64b5f6',
-    percentRange: [20, 42],
-    description: 'Human hand proximity, capacitive coupling, and physiological micro-tremor (500–3,800 nT).',
-    electrodynamics: 'Diamagnetic tissue micro-tilt & phone sensor enclosure deformation.',
-  },
-  {
-    id: 'charging_cable',
-    classId: 'CHARGING_CABLE_INDUCTION',
-    label: 'Charger',
-    icon: '🔌',
-    rangeNanoT: [2500, 20000],
-    color: '#ffb74d',
-    percentRange: [42, 64],
-    description: 'USB-C / MagSafe / Qi charging current induction (2,500–20,000 nT).',
-    electrodynamics: "Biot-Savart cylindrical DC field (B = µ₀I/2πr) + AC switching ripple.",
-  },
-  {
-    id: 'laptop_computer',
-    classId: 'LAPTOP_OR_COMPUTER',
-    label: 'Laptop / PC',
-    icon: '💻',
-    rangeNanoT: [15000, 35000],
-    color: '#ba68c8',
-    percentRange: [64, 82],
-    description: 'Nearby laptop, monitor, or PC switching power supplies (15,000–35,000 nT).',
-    electrodynamics: 'VRM inductors, display inverters, and cooling fan magnetic motors.',
-  },
-  {
-    id: 'smartwatch_magnet',
-    classId: 'SMARTWATCH_OR_MAGNET',
-    label: 'Smartwatch',
-    icon: '⌚',
-    rangeNanoT: [35000, 60000],
-    color: '#ff7043',
-    percentRange: [82, 100],
-    description: 'Milanese clasp, magnetic phone case, or neodymium magnet (35,000–60,000+ nT).',
-    electrodynamics: 'Permanent magnetic dipole with steep 1/r³ falloff gradient.',
-  },
-];
+  {id:'range_1',label:'0–0.5 µT',icon:'·',rangeNanoT:[0,500],color:'#4dd0e1',percentRange:[0,20]},
+  {id:'range_2',label:'0.5–4 µT',icon:'·',rangeNanoT:[500,4000],color:'#64b5f6',percentRange:[20,42]},
+  {id:'range_3',label:'4–20 µT',icon:'·',rangeNanoT:[4000,20000],color:'#ffb74d',percentRange:[42,64]},
+  {id:'range_4',label:'20–35 µT',icon:'·',rangeNanoT:[20000,35000],color:'#ba68c8',percentRange:[64,82]},
+  {id:'range_5',label:'35–60+ µT',icon:'·',rangeNanoT:[35000,60000],color:'#ff7043',percentRange:[82,100]},
+].map(z=>({...z,rangeNanoT:z.rangeNanoT as [number,number],percentRange:z.percentRange as [number,number],description:'Absolute local scalar variation relative to the selected baseline. These ranges are display bins, not object signatures or storm-severity thresholds.',electrodynamics:'Motion, sensor drift, nearby magnetic sources and geomagnetic variation can overlap in amplitude. Use controlled tests and independent, time-aligned evidence to investigate the cause.'}));
 
 /**
  * Maps a delta in nanoTesla (0 to 60,000 nT) to a percentage position [0, 100]% on the scale bar.
- * Uses piecewise non-linear scaling to provide high resolution across both low solar storm levels
- * and high electronics/magnet levels.
+ * Uses piecewise non-linear scaling to provide high resolution across both small and large local variations without inferring their source.
  */
 function nanoTeslaToPercent(deltaNt: number): number {
   const absNt = Math.max(0, Math.abs(deltaNt));
@@ -124,12 +74,12 @@ export function MagneticFieldScaleBar({
       {/* Title & Live Status */}
       <View style={styles.headerRow}>
         <View style={styles.titleGroup}>
-          <Text style={styles.eyebrow}>ELECTROMAGNETIC DISTURBANCE SCALE</Text>
-          <Text style={styles.title}>Where Your Signal Lands</Text>
+          <Text style={styles.eyebrow}>LOCAL AMPLITUDE SCALE</Text>
+          <Text style={styles.title}>Baseline-relative |ΔB|</Text>
         </View>
         <View style={[styles.livePinBadge, { borderColor: activeZone.color }]}>
           <Text style={[styles.livePinText, { color: activeZone.color }]}>
-            📍 Live: {absDeltaNt >= 1000 ? `+${(absDeltaNt / 1000).toFixed(1)} µT` : `+${absDeltaNt} nT`}
+            |ΔB|: {absDeltaNt >= 1000 ? `+${(absDeltaNt / 1000).toFixed(1)} µT` : `+${absDeltaNt} nT`}
           </Text>
         </View>
       </View>
@@ -227,7 +177,7 @@ export function MagneticFieldScaleBar({
           <Text style={styles.detailDescription}>{selectedZone.description}</Text>
           <View style={styles.electrodynamicsBox}>
             <Text style={[styles.electrodynamicsLabel, { color: selectedZone.color }]}>
-              ⚡ Electrodynamic Physics:
+              Interpreting this amplitude:
             </Text>
             <Text style={styles.electrodynamicsText}>{selectedZone.electrodynamics}</Text>
           </View>

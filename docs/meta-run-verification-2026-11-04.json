@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "mode": "RECORDED_REAL_META_RUN",
+  "recordedAtUtc": "2026-11-04T12:22:20.438Z",
+  "model": "muse-spark-1.3",
+  "status": "COMPLETED",
+  "modelCalled": true,
+  "modelRequestAttempts": 4,
+  "inputTokens": 11353,
+  "outputTokens": 2435,
+  "estimatedUsd": 0.02454,
+  "source": {
+    "stationId": "BOU",
+    "sourceUrl": "https://geomag.usgs.gov/ws/data/?id=BOU&format=json&elements=F&sampling_period=60&type=variation&starttime=2026-11-04T09%3A22%3A00.000Z&endtime=2026-11-04T12%3A22%3A00.000Z",
+    "sha256": "3e301ecd2eaba3c8a5578f9147ec54aa8e4837d9174f74543e0ce048d5f1ac86",
+    "retrievedAtUtc": "2026-11-04T12:22:20.436Z",
+    "latestObservedAtUtc": "2026-11-04T12:20:00.000Z",
+    "kind": "MEASURED_LIVE",
+    "component": "F",
+    "unit": "nT"
+  },
+  "independentPhoneSites": 0,
+  "invitationsDelivered": 0,
+  "reports": [
+    {
+      "verdict": "INCONCLUSIVE",
+      "summary": "INCONCLUSIVE: Available evidence is insufficient to establish a regional ground magnetic disturbance. 0 independent usable real phone sites; 0 aligned professional references. This does not establish visible aurora. INSUFFICIENT_INDEPENDENT_SITES.",
+      "audience": "research",
+      "synthetic": false
+    }
+  ],
+  "actions": [
+    {
+      "sequence": 1,
+      "tool": "get_event_context",
+      "status": "OK",
+      "atUtc": "2026-11-04T12:22:22.217Z"
+    },
+    {
+      "sequence": 2,
+      "tool": "get_regional_coverage",
+      "status": "OK",
+      "atUtc": "2026-11-04T12:22:29.514Z"
+    },
+    {
+      "sequence": 3,
+      "tool": "get_reference_magnetometers",
+      "status": "OK",
+      "atUtc": "2026-11-04T12:22:29.517Z"
+    },
+    {
+      "sequence": 4,
+      "tool": "run_regional_coherence",
+      "status": "OK",
+      "atUtc": "2026-11-04T12:22:29.521Z"
+    },
+    {
+      "sequence": 5,
+      "tool": "request_opt_in_session",
+      "status": "BLOCKED",
+      "atUtc": "2026-11-04T12:22:37.398Z"
+    },
+    {
+      "sequence": 6,
+      "tool": "publish_evidence_report",
+      "status": "OK",
+      "atUtc": "2026-11-04T12:22:41.284Z"
+    }
+  ],
+  "privateResultSha256": "a55e4228b021c60a4ba32c9ab2d3190910bdd41dd6a32d1bd2f84b3034b6eec1",
+  "limitations": [
+    "Recorded execution, not a new live request when viewed.",
+    "Local owner-operated research artifact; hosted authentication and RLS not established.",
+    "No phone sessions or volunteers were loaded; no messages or sensor activation.",
+    "Actual BOU reference loaded; no phone/reference alignment possible with zero phone sites.",
+    "Canonical report text is deterministic; model narrative cannot override it.",
+    "Provider token usage priced at verified standard rates; not a billing receipt."
+  ]
+}

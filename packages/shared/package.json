@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./sensor": "./src/sensor.ts",
+    "./ground-reference": "./src/ground-reference.ts",
     "./magnetic-classifier": "./src/magnetic-classifier.ts",
     "./prescriptive-evaluator": "./src/prescriptive-evaluator.ts"
   },

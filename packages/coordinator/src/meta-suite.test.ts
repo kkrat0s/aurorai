@@ -37,10 +37,10 @@ describe('Meta AI Suite', () => {
     expect(result.executionMode).toBe('LOCAL_DETERMINISTIC_EVALUATOR');
     expect(result.modelCalled).toBe(false);
     expect(result.regionalVerdict).toBe('INCONCLUSIVE');
-    expect(result.scientificVerdict).toBe('SUPPORTED_REGIONAL_CANDIDATE');
-    expect(result.confidence).toBe('HIGH');
+    expect(result.scientificVerdict).toBe('INCONCLUSIVE_LOCAL_ONLY');
+    expect(result.confidence).toBe('LOW');
     expect(result.physicalInterpretation.rateOfChangeAnalysis).toContain('dB/dt');
-    expect(result.narrative).toContain('Meta Muse Spark 1.3');
+    expect(result.narrative).toContain('no model call');
     expect(result.narrative).toContain('INCONCLUSIVE');
     expect(result.recommendedNextActions).toHaveLength(3);
   });
@@ -65,8 +65,18 @@ describe('Meta AI Suite', () => {
 
     expect(result.scientificVerdict).toBe('REJECTED_CONTAMINATED');
     expect(result.regionalVerdict).toBe('REJECTED');
-    expect(result.confidence).toBe('HIGH');
+    expect(result.confidence).toBe('LOW');
     expect(result.narrative).toContain('rejected by scientific QC');
+  });
+
+  it('does not invent a rate, resolved Pc5 peak, stationarity or generic sensor noise floor',()=>{
+    const result=evaluateSparkMeasurementInsight({sessionSummary:{durationSeconds:30,nominalHz:10,actualHz:9.9,baselineMedianMicroT:45,noiseMadNt:80,p95DeltaNt:300,maxDeltaNt:400,endpointDriftNt:250,dominantFrequencyHz:.004},qcResult:{accepted:true,flags:[]},spaceWeatherContext:{boulderDeflectionNt:1000}});
+    expect(result.physicalInterpretation.rateOfChangeAnalysis).toContain('not supplied');
+    expect(result.physicalInterpretation.frequencyRegime).toContain('No resolved frequency');
+    expect(result.physicalInterpretation.noiseFloorComparison).toContain('not a validated');
+    expect(result.scientificVerdict).toBe('INCONCLUSIVE_LOCAL_ONLY');expect(result.confidence).toBe('LOW');
+    const invalid=evaluateSparkMeasurementInsight({sessionSummary:{durationSeconds:NaN,nominalHz:10,actualHz:10,baselineMedianMicroT:45,noiseMadNt:80,p95DeltaNt:300,maxDeltaNt:400,endpointDriftNt:250},qcResult:{accepted:true,flags:[]}});
+    expect(invalid.regionalVerdict).toBe('REJECTED');expect(invalid.narrative).toContain('invalid');
   });
 
   it('calls live Meta Responses endpoint when API key is provided and preserves deterministic regionalVerdict', async () => {
@@ -133,7 +143,7 @@ describe('Meta AI Suite', () => {
       professionalStationCoherence: false, // No Boulder corroboration yet
     });
 
-    expect(result.model).toBe('muse-wonder');
+    expect(result.model).toBe('muse-wonder-1.0');
     expect(result.executionMode).toBe('LOCAL_DETERMINISTIC_EVALUATOR');
     expect(result.modelCalled).toBe(false);
     expect(result.critiqueStatus).toBe('CHALLENGE_RAISED');
@@ -142,56 +152,12 @@ describe('Meta AI Suite', () => {
     expect(result.verdictAdjustment).toContain('QUALIFIED');
   });
 
-  it('evaluates aurora alert with nighttime darkness and severe solar storm', () => {
-    const alert = evaluateAuroraAlertDecision({
-      userLocation: {
-        geomagneticLatitudeDeg: 58.5,
-        isNighttime: true,
-        cloudFraction: 0.15,
-        approximateCityOrRegion: 'Fairbanks / High Latitude',
-      },
-      spaceWeather: {
-        imfBzNt: -14.2,
-        solarWindSpeedKmS: 720,
-        ovationActivity: 85,
-        currentStormScale: 'G4',
-      },
-      groundEvidence: {
-        phoneAccepted: true,
-        phoneDeltaNt: 432.5,
-        boulderCoherence: true,
-      },
-    });
-
-    expect(alert.alertLevel).toBe('ACTIVE_AURORA_ALERT');
-    expect(alert.visibilityLikelihood).toBe('HIGH');
-    expect(alert.title).toContain('Active Aurora Alert: Severe G4 Storm');
-    expect(alert.localMeasurementTrigger.recommended).toBe(true);
-  });
-
-  it('evaluates daylight conditions as elevated watch rather than active visual alert', () => {
-    const alert = evaluateAuroraAlertDecision({
-      userLocation: {
-        geomagneticLatitudeDeg: 55.0,
-        isNighttime: false, // Daylight!
-        cloudFraction: 0.0,
-      },
-      spaceWeather: {
-        imfBzNt: -10.0,
-        solarWindSpeedKmS: 600,
-        ovationActivity: 70,
-        currentStormScale: 'G3',
-      },
-      groundEvidence: {
-        phoneAccepted: true,
-        phoneDeltaNt: 300,
-        boulderCoherence: true,
-      },
-    });
-
-    expect(alert.alertLevel).toBe('ELEVATED_WATCH');
-    expect(alert.visibilityLikelihood).toBe('LOW');
-    expect(alert.summary).toContain('Daylight currently prevents optical viewing');
+  it('ignores legacy unsourced aurora claims and reports unknown', () => {
+    const result=evaluateAuroraAlertDecision({userLocation:{geomagneticLatitudeDeg:58.5,isNighttime:true,cloudFraction:.15},spaceWeather:{imfBzNt:-14,ovationActivity:85,currentStormScale:'G4'},groundEvidence:{phoneAccepted:true,phoneDeltaNt:432,boulderCoherence:true}});
+    expect(result.alertLevel).toBe('INSUFFICIENT_DATA');
+    expect(result.visibilityLikelihood).toBe('UNKNOWN');
+    expect(result.metaAudit.modelCalled).toBe(false);
+    expect(result.numericalProbability).toBeNull();
   });
 
   it('returns valid conceptual educational artwork descriptions for all 5 stages of Muse Image', () => {
@@ -200,7 +166,7 @@ describe('Meta AI Suite', () => {
       expect(concept.stage).toBe(stage);
       expect(concept.title.length).toBeGreaterThan(5);
       expect(concept.scientificPrompt.length).toBeGreaterThan(20);
-      expect(concept.model).toBe('muse-image');
+      expect(concept.model).toBe('muse-image-1.0');
       expect(concept.executionMode).toBe('CONCEPTUAL_SPECIFICATION');
     }
   });
@@ -215,7 +181,7 @@ describe('Meta AI Suite', () => {
     expect(sam.model).toBe('sam-3.1');
     expect(sam.executionMode).toBe('CONCEPTUAL_SPECIFICATION_DEMO');
     expect(sam.modelCalled).toBe(false);
-    expect(sam.masks).toHaveLength(4);
-    expect(sam.opticalVerification).toBe('CONFIRMED_AURORAL_EMISSION');
+    expect(sam.masks).toHaveLength(0);
+    expect(sam.opticalVerification).toBe('INCONCLUSIVE');
   });
 });

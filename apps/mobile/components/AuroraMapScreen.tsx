@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AuroraEvidencePanel } from './AuroraEvidencePanel';
 import {
   Pressable,
   ScrollView,
@@ -36,25 +37,14 @@ const colors = {
   border: '#163354',
 };
 
-const COARSE_REGIONS = [
-  { id: 'boulder', name: 'Boulder, CO (40.0°N)', lat: 40.0, magLat: 48.6, look: 'Northern Horizon (low elevation)' },
-  { id: 'fairbanks', name: 'Fairbanks, AK (64.8°N)', lat: 64.8, magLat: 65.4, look: 'Overhead Zenith & North' },
-  { id: 'reykjavik', name: 'Reykjavik, IS (64.1°N)', lat: 64.1, magLat: 64.5, look: 'Overhead Auroral Oval' },
-  { id: 'tromso', name: 'Tromsø, NO (69.6°N)', lat: 69.6, magLat: 66.7, look: 'Overhead & Southern Arc' },
-] as const;
-
 const LAYERS = [
-  { id: 'aurora', label: 'Modeled activity' },
-  { id: 'ground', label: 'Ground evidence' },
-  { id: 'darkness', label: 'Twilight / Night' },
+  { id: 'aurora', label: 'Oval diagram' },
+  { id: 'darkness', label: 'Night illustration' },
 ] as const;
 
 export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraMapScreenProps) {
   const [hemisphere, setHemisphere] = useState<'north' | 'south'>('north');
-  const [activeLayer, setActiveLayer] = useState<'aurora' | 'ground' | 'darkness'>('aurora');
-  const [selectedRegionIdx, setSelectedRegionIdx] = useState(0);
-
-  const region = COARSE_REGIONS[selectedRegionIdx];
+  const [activeLayer, setActiveLayer] = useState<'aurora' | 'darkness'>('aurora');
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -68,7 +58,7 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
         </View>
         <View style={styles.provenanceBadge}>
           <Text style={styles.provenanceBadgeText}>
-            {mode === 'live' ? 'NOAA OVATION · MODEL' : 'REPLAY · BOU GROUND'}
+            ILLUSTRATION + SOURCED EVIDENCE
           </Text>
         </View>
       </View>
@@ -81,7 +71,7 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
             style={[styles.segBtn, mode === 'live' && styles.segBtnActive]}
           >
             <Text style={[styles.segText, mode === 'live' && styles.segTextActive]}>
-              Live OVATION (~30–90m)
+              Current evidence
             </Text>
           </Pressable>
           <Pressable
@@ -110,8 +100,11 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
         </View>
       </View>
 
-      {/* POLAR MAP CARD */}
+      <AuroraEvidencePanel mode={mode} />
+
+      {/* POLAR MAP CARD: illustrative only, not the source grid */}
       <View style={styles.mapCard}>
+        <Text style={styles.horizonCaption}>AURORAL OVAL CONCEPT · ILLUSTRATIVE, NOT LIVE DATA</Text>
         <View style={styles.polarSvgWrapper}>
           <Svg width="100%" height={250} viewBox="0 0 300 250">
             <Defs>
@@ -122,9 +115,9 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
               </RadialGradient>
               <RadialGradient id="auroraOvalGlow" cx="50%" cy="48%" rx="50%" ry="50%">
                 <Stop offset="40%" stopColor="#00e5ff" stopOpacity="0" />
-                <Stop offset="55%" stopColor="#20c997" stopOpacity={mode === 'live' ? '0.82' : '0.45'} />
-                <Stop offset="68%" stopColor="#ffd58c" stopOpacity={mode === 'live' ? '0.88' : '0.50'} />
-                <Stop offset="75%" stopColor="#ff5252" stopOpacity={mode === 'live' ? '0.70' : '0.35'} />
+                <Stop offset="55%" stopColor="#20c997" stopOpacity="0.65" />
+                <Stop offset="68%" stopColor="#ffd58c" stopOpacity="0.70" />
+                <Stop offset="75%" stopColor="#ff5252" stopOpacity="0.55" />
                 <Stop offset="90%" stopColor="#ff5252" stopOpacity="0" />
               </RadialGradient>
             </Defs>
@@ -173,16 +166,10 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
             {/* Modeled Auroral Oval Ring */}
             <Circle cx="150" cy="121" r="70" fill="url(#auroraOvalGlow)" opacity="0.88" />
 
-            {/* USGS Boulder Reference Marker */}
-            <Circle cx="98" cy="158" r="4.5" fill={colors.mint} stroke="#ffffff" strokeWidth="1.2" />
-            <SvgText x="98" y="171" fill={colors.mint} fontSize="8" fontWeight="800" textAnchor="middle">
-              BOU (40°N)
-            </SvgText>
-
             {/* Geomagnetic Pole Marker */}
             <Circle cx="150" cy="121" r="3.5" fill="#ffd58c" />
             <SvgText x="150" y="109" fill="#ffd58c" fontSize="8" fontWeight="800" textAnchor="middle">
-              {hemisphere === 'north' ? 'Geographic / Polar North' : 'Geographic / Polar South'}
+              {hemisphere === 'north' ? 'North: conceptual view' : 'South: conceptual view'}
             </SvgText>
 
             {/* Graticule Coordinate Labels */}
@@ -204,8 +191,8 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
         {/* HEATMAP COLOR SCALE */}
         <View style={styles.legendContainer}>
           <View style={styles.legendBarLabels}>
-            <Text style={styles.legendLabel}>Lower modeled activity</Text>
-            <Text style={styles.legendLabel}>Higher modeled activity</Text>
+            <Text style={styles.legendLabel}>Illustrative color scale</Text>
+            <Text style={styles.legendLabel}>No measured values</Text>
           </View>
           <View style={styles.legendGradientBar}>
             <Svg width="100%" height={6}>
@@ -223,7 +210,7 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
           </View>
           <Text style={styles.horizonCaption}>
             {mode === 'live'
-              ? 'Forecast horizon supplied by NOAA OVATION only (never extrapolated to +72h).'
+              ? 'This drawing does not display the current NOAA grid or a computed night boundary. Sourced location-specific evidence appears above.'
               : 'Historical May 2024 OVATION archive unavailable; current NOAA grid is never relabeled as 2024.'}
           </Text>
         </View>
@@ -247,40 +234,6 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
         </View>
       </View>
 
-      {/* COARSE VIEWING REGION & LOCAL VISIBILITY CONDITIONS */}
-      <View style={styles.regionCard}>
-        <Text style={styles.regionCardTitle}>COARSE VIEWING REGION (NO GPS REQUIRED)</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.regionPills}>
-          {COARSE_REGIONS.map((r, idx) => {
-            const active = selectedRegionIdx === idx;
-            return (
-              <Pressable
-                key={r.id}
-                onPress={() => setSelectedRegionIdx(idx)}
-                style={[styles.regionPill, active && styles.regionPillActive]}
-              >
-                <Text style={[styles.regionPillText, active && styles.regionPillTextActive]}>
-                  {r.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        <View style={styles.regionMetricsGrid}>
-          <View style={styles.regionMetricBox}>
-            <Text style={styles.regionMetricLabel}>MAG LATITUDE (APPROX)</Text>
-            <Text style={styles.regionMetricVal}>~{region.magLat}°</Text>
-            <Text style={styles.regionMetricSub}>{region.look}</Text>
-          </View>
-          <View style={styles.regionMetricBox}>
-            <Text style={styles.regionMetricLabel}>CLOUD COVER FEED</Text>
-            <Text style={[styles.regionMetricVal, { color: colors.amber }]}>Unknown</Text>
-            <Text style={styles.regionMetricSub}>No live weather API connected</Text>
-          </View>
-        </View>
-      </View>
-
       {/* SCIENTIFIC HONESTY CALLOUT */}
       <View style={styles.calloutCard}>
         <View style={styles.calloutIconBox}>
@@ -291,7 +244,7 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
             Modeled auroral activity ≠ guaranteed visible aurora
           </Text>
           <Text style={styles.calloutBody}>
-            Magnetometers measure magnetic fields, not photons. Visual sightings require astronomical darkness, clear skies, and active particle precipitation.
+            Magnetometers measure magnetic fields, not photons. Viewing depends on sky brightness, clouds and particle precipitation; a magnetic change alone cannot confirm a sighting.
           </Text>
         </View>
       </View>
@@ -313,7 +266,7 @@ export function AuroraMapScreen({ mode, onChangeMode, onOpenSightings }: AuroraM
           </View>
         </View>
         <Text style={styles.sightingsBody}>
-          When adult opt-in sky photos are submitted, our Meta SAM 3.1 segmentation pipeline is designed to separate 557.7 nm green / 630.0 nm red auroral arcs from clouds and urban light domes. Tap to learn how upper-atmosphere emissions work.
+          Optical segmentation is a concept only; no SAM model or photo confirmation is active. RGB colors cannot verify spectral emission wavelengths. Tap to learn how upper-atmosphere emissions work.
         </Text>
       </Pressable>
     </ScrollView>

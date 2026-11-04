@@ -10,16 +10,16 @@ export interface AccelSample {
 export interface MotionAnalysis {
   isStandstill: boolean;
   motionState: DeviceMotionState;
-  accelVarianceG: number;
+  accelVarianceG: number | null;
   isFlatOnSurface: boolean;
-  dynamicAccelG: number;
-  tiltDegrees: number;
+  dynamicAccelG: number | null;
+  tiltDegrees: number | null;
 }
 
 /**
  * Real-time accelerometer motion classifier.
- * Distinguishes motionless resting on a table from subtle hand micro-tremor
- * and active macro device motion.
+ * Screens acceleration variation. It cannot establish the supporting surface,
+ * identify a human hand, or detect every rotation (notably yaw about gravity).
  */
 export class RealtimeMotionDetector {
   private buffer: AccelSample[] = [];
@@ -30,26 +30,29 @@ export class RealtimeMotionDetector {
   }
 
   public pushSample(x: number, y: number, z: number, timestampMs: number): void {
+    const previous=this.buffer.at(-1);
+    if (![x,y,z,timestampMs].every(Number.isFinite) || Math.hypot(x,y,z)<0.1) { this.reset(); return; }
+    if (previous && (timestampMs<=previous.timestampMs || timestampMs-previous.timestampMs>500)) this.reset();
     this.buffer.push({ x, y, z, timestampMs });
     if (this.buffer.length > this.maxBufferSize) {
       this.buffer.shift();
     }
   }
 
-  public analyze(): MotionAnalysis {
-    if (this.buffer.length < 3) {
+  public analyze(nowMs = performance.now()): MotionAnalysis {
+    const age=nowMs-(this.buffer.at(-1)?.timestampMs ?? NaN);
+    if (this.buffer.length < 3 || !Number.isFinite(age) || age<0 || age>500) {
       return {
-        isStandstill: true,
-        motionState: 'STANDSTILL',
-        accelVarianceG: 0.01,
-        isFlatOnSurface: true,
-        dynamicAccelG: 0.01,
-        tiltDegrees: 0,
+        isStandstill: false,
+        motionState: 'UNKNOWN',
+        accelVarianceG: null,
+        isFlatOnSurface: false,
+        dynamicAccelG: null,
+        tiltDegrees: null,
       };
     }
 
     const latest = this.buffer[this.buffer.length - 1];
-    const latestMag = Math.sqrt(latest.x * latest.x + latest.y * latest.y + latest.z * latest.z);
 
     // Compute mean norm and variance over window
     let magSum = 0;
@@ -67,7 +70,11 @@ export class RealtimeMotionDetector {
       if (dyn > maxDyn) maxDyn = dyn;
     }
     const variance = varSum / this.buffer.length;
-    const stdDev = Math.sqrt(variance);
+    // Norm variance alone misses pitch/roll changes at constant gravity magnitude.
+    const meanVector = {x:0,y:0,z:0};
+    for (const sample of this.buffer) { meanVector.x+=sample.x/this.buffer.length; meanVector.y+=sample.y/this.buffer.length; meanVector.z+=sample.z/this.buffer.length; }
+    const vectorVariance=this.buffer.reduce((sum,s)=>sum+(s.x-meanVector.x)**2+(s.y-meanVector.y)**2+(s.z-meanVector.z)**2,0)/this.buffer.length;
+    const stdDev = Math.sqrt(Math.max(variance,vectorVariance));
 
     // Posture: Is the phone resting flat on surface face-up or face-down?
     const horizontalNorm = Math.sqrt(latest.x * latest.x + latest.y * latest.y);
@@ -76,7 +83,7 @@ export class RealtimeMotionDetector {
 
     // Motion classification
     // 1. STANDSTILL: motionless on a desk/stand (stdDev < 0.035g and dynamic deviation < 0.08g)
-    // 2. HAND_TREMOR: held in hand with natural physiological human micro-tremor (~4-8 Hz, stdDev < 0.12g)
+    // 2. HAND_TREMOR: low motion candidate (stdDev < 0.12g); no tremor-frequency or hand identification
     // 3. ACTIVE_MOTION: walking, waving, translating, rotating (stdDev >= 0.12g or dynamic > 0.22g)
     let motionState: DeviceMotionState = 'STANDSTILL';
     let isStandstill = false;

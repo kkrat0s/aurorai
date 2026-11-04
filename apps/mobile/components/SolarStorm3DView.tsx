@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -57,9 +57,6 @@ const SCENARIO_META: Record<
   {
     badge: string;
     title: string;
-    speedKms: number;
-    bzNt: number;
-    groundShiftNt: string;
     compression: number;
     fieldColor: string;
     auroraColor: string;
@@ -69,42 +66,33 @@ const SCENARIO_META: Record<
 > = {
   QUIET_SOLAR_WIND: {
     badge: '🌤️ QUIET SOLAR BREEZE',
-    title: 'Everyday Solar Wind (~400 km/s)',
-    speedKms: 390,
-    bzNt: -2,
-    groundShiftNt: '10–30 nT',
+    title: 'Quiet solar wind · conceptual illustration',
     compression: 0.12,
     fieldColor: '#00e5ff',
     auroraColor: '#20c997',
-    headline: "Earth's magnetic shield deflects 99% of steady solar wind plasma.",
+    headline: "Earth's magnetosphere responds to the solar wind.",
     detail:
-      'Gentle dayside compression and faint polar aurora ovals. Ground magnetometers see tiny 10–30 nT daily tides.',
+      'Solar wind shapes the magnetosphere. Ground variation depends on location, time and current systems.',
   },
   MAY_2024_G5: {
     badge: '🌌 MAY 2024 MOTHER’S DAY G5',
-    title: 'Extreme G5 Storm (Dr. Nykyri KHI Study)',
-    speedKms: 880,
-    bzNt: -41,
-    groundShiftNt: '400–700 nT',
+    title: 'May 2024 · conceptual storm illustration',
     compression: 0.52,
     fieldColor: '#a882ff',
     auroraColor: '#ff4081',
-    headline: '11 Kelvin-Helmholtz vortex & magnetotail reconnection cycles.',
+    headline: 'Solar disturbances can transfer energy into the magnetosphere.',
     detail:
-      'Repeated CME impacts compressed Earth’s shield and snapped the nightside tail, disrupting tractor GPS ($500M loss) and pushing crimson auroras to Florida & Spain.',
+      'Reconnection, currents and particle precipitation contribute to the response. These animated waves are not reconstructed events or a measured count of reconnection cycles.',
   },
   CARRINGTON_1859: {
     badge: '🔥 1859 CARRINGTON SUPERSTORM',
-    title: 'Telegraphs on Fire · $2.4T Modern Grid Threat',
-    speedKms: 2150,
-    bzNt: -85,
-    groundShiftNt: '1,600–5,000+ nT',
+    title: 'Carrington event · historical context',
     compression: 0.78,
     fieldColor: '#ff5252',
     auroraColor: '#ff1744',
-    headline: 'In Sept 1859, induced ground currents set telegraph stations on fire!',
+    headline: 'The 1859 storm disrupted telegraph communications.',
     detail:
-      'A Carrington-class CME compresses the magnetopause inside geostationary orbit. In 1859 telegraph operators unplugged batteries and still sent messages on auroral current alone; today it could fry power transformers and satellites worldwide ($2.4T Lloyd’s estimate).',
+      'Auroras reached unusually low latitudes. Modern severe space weather can affect power grids, satellites, radio and navigation; impacts depend on the event and infrastructure.',
   },
 };
 
@@ -411,15 +399,15 @@ export function SolarStorm3DView({
         <View style={styles.telemetryStrip}>
           <View style={styles.telChip}>
             <Text style={styles.telLabel}>SOLAR WIND</Text>
-            <Text style={styles.telVal}>{meta.speedKms} km/s</Text>
+            <Text style={styles.telVal}>Plasma + field</Text>
           </View>
           <View style={styles.telChip}>
-            <Text style={styles.telLabel}>IMF Bz</Text>
-            <Text style={[styles.telVal, { color: '#ff8a80' }]}>{meta.bzNt} nT</Text>
+            <Text style={styles.telLabel}>MAGNETOSPHERE</Text>
+            <Text style={[styles.telVal, { color: '#ff8a80' }]}>Energy transfer</Text>
           </View>
           <View style={styles.telChip}>
-            <Text style={styles.telLabel}>GROUND SURGE</Text>
-            <Text style={[styles.telVal, { color: meta.fieldColor }]}>{meta.groundShiftNt}</Text>
+            <Text style={styles.telLabel}>GROUND</Text>
+            <Text style={[styles.telVal, { color: meta.fieldColor }]}>Field response</Text>
           </View>
         </View>
       </View>
@@ -436,6 +424,9 @@ export function SolarStorm3DView({
       >
         <Text style={styles.storyHeadline}>{meta.headline}</Text>
         <Text style={styles.storyDetail}>{meta.detail}</Text>
+        <Text style={[styles.storyDetail, { marginTop: 6 }]}>Conceptual animation · not an event reconstruction or a forecast. Sizes and timing are illustrative.</Text>
+        <Text style={[styles.storyDetail, { color: '#7CE7FF', marginTop: 4 }]}
+          onPress={() => { void Linking.openURL('https://www.noaa.gov/explainers/space-weather-storms-from-sun'); }}>Source: NOAA space-weather explanation ↗</Text>
       </View>
     </View>
   );

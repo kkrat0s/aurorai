@@ -7,13 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import Svg, {
-  Line,
-  Path,
-  Text as SvgText,
-} from 'react-native-svg';
 import {
-  UNIVERSAL_FINGERPRINT_DATABASE,
   type DisturbanceClassificationResult,
   type LearnedUserFingerprint,
 } from '@aurorasense/shared/magnetic-classifier';
@@ -56,6 +50,7 @@ interface GroundTruthScreenProps {
   uploadStatus: string | null;
   onExportSession: (format: 'json' | 'csv' | 'qc') => void;
   onDeleteSession: () => void;
+  dataBusy: boolean;
   statusMessage: string;
   currentStep: number;
   onSelectStep: (step: number) => void;
@@ -113,6 +108,7 @@ export function GroundTruthScreen({
   uploadStatus,
   onExportSession,
   onDeleteSession,
+  dataBusy,
   statusMessage,
   currentStep,
   onSelectStep,
@@ -122,9 +118,9 @@ export function GroundTruthScreen({
   const [viewMode, setViewMode] = useState<'wireframe' | 'journey'>('journey');
   const [activeSubTab, setActiveSubTab] = useState<'My Sensor' | 'Nearby Devices' | 'Reference Station'>('My Sensor');
 
-  const xVal = vector?.x ?? session?.samples.at(-1)?.x ?? -19.92;
-  const yVal = vector?.y ?? session?.samples.at(-1)?.y ?? -38.26;
-  const zVal = vector?.z ?? session?.samples.at(-1)?.z ?? 15.65;
+  const xVal = vector?.x ?? session?.samples.at(-1)?.x ?? null;
+  const yVal = vector?.y ?? session?.samples.at(-1)?.y ?? null;
+  const zVal = vector?.z ?? session?.samples.at(-1)?.z ?? null;
 
   const isInterference =
     !motionAnalysis.isStandstill ||
@@ -133,8 +129,8 @@ export function GroundTruthScreen({
     classification?.predictedClass === 'CHARGING_CABLE_INDUCTION' ||
     classification?.predictedClass === 'SMARTWATCH_OR_MAGNET';
 
-  const noiseMad = prescriptiveReport?.placementQuality.noiseMadNt ?? qc?.noiseMadNt ?? 62.0;
-  const p95Delta = prescriptiveReport?.activityLevel.p95DeltaNt ?? (delta ? Math.abs(delta * 1000) : 432.5);
+  const noiseMad = prescriptiveReport?.placementQuality.noiseMadNt ?? qc?.noiseMadNt ?? null;
+  const p95Delta = prescriptiveReport?.activityLevel.p95DeltaNt ?? qc?.highWater[0]?.p95AbsoluteDeltaNt ?? null;
 
   if (viewMode === 'journey') {
     return (
@@ -157,10 +153,18 @@ export function GroundTruthScreen({
           onCalibrate={onCalibrate}
           targetDurationSec={targetDurationSec}
           onChangeTargetDurationSec={onChangeTargetDurationSec}
+          adultConfirmed={adultConfirmed}
+          onChangeAdult={onChangeAdult}
+          recordingConsent={recordingConsent}
+          onChangeConsent={onChangeConsent}
           onStartRecording={onStartRecording}
           onStopRecording={onStopRecording}
           isRecording={isRecording}
           recordingElapsed={recordingElapsed}
+          onExportSession={onExportSession}
+          onDeleteSession={onDeleteSession}
+          dataBusy={dataBusy}
+          statusMessage={statusMessage}
           onUploadToDatabase={onUploadDatabase}
           uploadStatus={uploadStatus}
           isUploading={isUploading}
@@ -174,47 +178,11 @@ export function GroundTruthScreen({
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <>
-          <MagneticField3DView
-            currentMagMicroT={mag ?? 45.88}
-            deltaNt={(delta ?? 0) * 1000}
-            bx={xVal}
-            by={yVal}
-            bz={zVal}
-            classification={
-              classification ?? {
-                predictedClass: 'CLEAN_GEOMAGNETIC_BASELINE',
-                confidence: 0.9,
-                scores: {
-                  CLEAN_GEOMAGNETIC_BASELINE: 0.9,
-                  GEOMAGNETIC_SOLAR_DISTURBANCE: 0.02,
-                  HUMAN_HAND_GESTURE: 0.02,
-                  SMARTWATCH_OR_MAGNET: 0.02,
-                  CHARGING_CABLE_INDUCTION: 0.02,
-                  LAPTOP_OR_COMPUTER: 0.01,
-                  STRUCTURAL_METALLIC_MASS: 0.01,
-                },
-                metadata: UNIVERSAL_FINGERPRINT_DATABASE.CLEAN_GEOMAGNETIC_BASELINE,
-                signature: {
-                  deltaMicroT: 0,
-                  deltaNanoT: 0,
-                  peakDeltaMicroT: 0.06,
-                  rateOfChangeMicroTPerSec: 0.05,
-                  polarizationRatio: 0.4,
-                  jitterRatio: 0.1,
-                  steadinessRatio: 0.9,
-                  sampleCount: 10,
-                  durationMs: 1000,
-                },
-                solarStormSignalRatio: 0.6,
-                fingerprintHash: 'fp-clea-0001',
-                aiReasoning: 'Quiet baseline',
-              }
-            }
-            isMuted={soundMuted}
-            onToggleMute={onToggleSound}
-            onZeroBaseline={onCalibrate}
-            compact
-          />
+          {mag !== null && xVal !== null && yVal !== null && zVal !== null && classification ? (
+            <MagneticField3DView currentMagMicroT={mag} deltaNt={(delta ?? 0) * 1000}
+              bx={xVal} by={yVal} bz={zVal} classification={classification}
+              isMuted={soundMuted} onToggleMute={onToggleSound} onZeroBaseline={onCalibrate} compact />
+          ) : <Text style={styles.honestyNotice}>Waiting for real phone measurements and a valid classification window.</Text>}
           {/* SUB-TABS: [ My Sensor ] [ Nearby Devices ] [ Reference Station ] */}
           <View style={styles.subTabsRow}>
             {SUB_TABS.map((tab) => {
@@ -253,73 +221,19 @@ export function GroundTruthScreen({
             <View style={styles.axesRow}>
               <View style={styles.axisItem}>
                 <Text style={[styles.axisLabel, { color: colors.blue }]}>X · DEVICE</Text>
-                <Text style={styles.axisVal}>{xVal.toFixed(2)} µT</Text>
+                <Text style={styles.axisVal}>{xVal?.toFixed(2) ?? '—'} µT</Text>
               </View>
               <View style={styles.axisItem}>
                 <Text style={[styles.axisLabel, { color: colors.mint }]}>Y · DEVICE</Text>
-                <Text style={styles.axisVal}>{yVal.toFixed(2)} µT</Text>
+                <Text style={styles.axisVal}>{yVal?.toFixed(2) ?? '—'} µT</Text>
               </View>
               <View style={styles.axisItem}>
                 <Text style={[styles.axisLabel, { color: colors.violet }]}>Z · DEVICE</Text>
-                <Text style={styles.axisVal}>{zVal.toFixed(2)} µT</Text>
+                <Text style={styles.axisVal}>{zVal?.toFixed(2) ?? '—'} µT</Text>
               </View>
             </View>
 
-            {/* 3-AXIS TIME SERIES CHART (DEVICE FRAME) */}
-            <View style={styles.chartWrapper}>
-              <Svg width="100%" height={110} viewBox="0 0 320 110">
-                <Line x1="30" y1="20" x2="310" y2="20" stroke="#163354" strokeWidth="0.8" strokeDasharray="3,3" />
-                <Line x1="30" y1="55" x2="310" y2="55" stroke="#1c436e" strokeWidth="1" />
-                <Line x1="30" y1="90" x2="310" y2="90" stroke="#163354" strokeWidth="0.8" strokeDasharray="3,3" />
-
-                <SvgText x="4" y="23" fill="#698cae" fontSize="8" fontWeight="bold">+80 nT</SvgText>
-                <SvgText x="10" y="58" fill="#698cae" fontSize="8" fontWeight="bold">0</SvgText>
-                <SvgText x="2" y="93" fill="#698cae" fontSize="8" fontWeight="bold">-80 nT</SvgText>
-
-                {/* X · DEVICE Curve (Blue) */}
-                <Path
-                  d="M 30 55 Q 80 50, 130 52 T 210 50 T 270 45 T 310 56"
-                  stroke={colors.blue}
-                  strokeWidth="1.8"
-                  fill="none"
-                />
-                {/* Y · DEVICE Curve (Mint) */}
-                <Path
-                  d="M 30 57 Q 70 65, 110 63 T 190 62 T 260 70 T 310 60"
-                  stroke={colors.mint}
-                  strokeWidth="1.8"
-                  fill="none"
-                />
-                {/* Z · DEVICE Curve (Violet) */}
-                <Path
-                  d="M 30 55 C 80 40, 140 38, 200 42 C 240 45, 270 25, 290 35 L 310 52"
-                  stroke={colors.violet}
-                  strokeWidth="2"
-                  fill="none"
-                />
-
-                <SvgText x="30" y="106" fill="#698cae" fontSize="7.5">0m (Baseline)</SvgText>
-                <SvgText x="115" y="106" fill="#698cae" fontSize="7.5">+2m (Locked)</SvgText>
-                <SvgText x="195" y="106" fill="#698cae" fontSize="7.5">+6m</SvgText>
-                <SvgText x="265" y="106" fill="#698cae" fontSize="7.5">+10m</SvgText>
-              </Svg>
-            </View>
-
-            {/* CHART LEGEND — STRICT DEVICE FRAME LABELS */}
-            <View style={styles.chartLegendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendBar, { backgroundColor: colors.blue }]} />
-                <Text style={styles.legendText}>X · DEVICE FRAME</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendBar, { backgroundColor: colors.mint }]} />
-                <Text style={styles.legendText}>Y · DEVICE FRAME</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendBar, { backgroundColor: colors.violet }]} />
-                <Text style={styles.legendText}>Z · DEVICE FRAME</Text>
-              </View>
-            </View>
+            <Text style={styles.honestyNotice}>Source: this phone · DEVICE axes in µT. Export the timestamped recording to inspect the measured series. No illustrative curve is presented as phone data.</Text>
           </View>
 
           {/* CARD 2: REGIONAL COMPARISON (DETRENDED SCALAR Δ|B| — HONEST PROVENANCE) */}
@@ -331,49 +245,8 @@ export function GroundTruthScreen({
             </View>
 
             <Text style={styles.honestyNotice}>
-              {activeSubTab === 'Nearby Devices'
-                ? '0 other verified live citizen phones connected in this region cell. A single device cannot establish regional disturbance.'
-                : 'Historical May 2024 USGS Boulder (BOU) storm scale shown for reference only. A 2026 phone session is not co-temporal with the May 2024 archive.'}
+              No verified synchronous regional comparison is loaded in this view. A single phone cannot establish regional disturbance. Use the professional-reference comparison in the main observation journey; historical archives are not co-temporal with a live session.
             </Text>
-
-            <View style={styles.chartWrapper}>
-              <Svg width="100%" height={100} viewBox="0 0 320 100">
-                <Line x1="30" y1="18" x2="310" y2="18" stroke="#163354" strokeWidth="0.8" strokeDasharray="3,3" />
-                <Line x1="30" y1="50" x2="310" y2="50" stroke="#1c436e" strokeWidth="1" />
-                <Line x1="30" y1="82" x2="310" y2="82" stroke="#163354" strokeWidth="0.8" strokeDasharray="3,3" />
-
-                <SvgText x="2" y="21" fill="#698cae" fontSize="8" fontWeight="bold">+200</SvgText>
-                <SvgText x="10" y="53" fill="#698cae" fontSize="8" fontWeight="bold">0</SvgText>
-                <SvgText x="0" y="85" fill="#698cae" fontSize="8" fontWeight="bold">-400</SvgText>
-
-                {/* Historical BOU Scale Reference (Dashed Muted) */}
-                <Path
-                  d="M 30 50 Q 90 54, 140 58 T 230 68 T 280 74 T 310 70"
-                  stroke="#8ba2ba"
-                  strokeWidth="1.5"
-                  fill="none"
-                  strokeDasharray="3,3"
-                />
-                {/* Your Device Scalar Δ|B| (Violet) */}
-                <Path
-                  d="M 30 50 C 90 52, 150 56, 210 64 C 250 70, 275 78, 290 72 L 310 74"
-                  stroke={colors.violet}
-                  strokeWidth="2.5"
-                  fill="none"
-                />
-              </Svg>
-            </View>
-
-            <View style={styles.chartLegendRow}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendBar, { backgroundColor: colors.violet }]} />
-                <Text style={styles.legendText}>Your device (scalar Δ|B|)</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendBar, { backgroundColor: '#8ba2ba' }]} />
-                <Text style={styles.legendText}>BOU May 2024 scale ref (unaligned)</Text>
-              </View>
-            </View>
           </View>
 
           {/* CARD 3: LOCAL INTERFERENCE / SESSION QUALITY */}
@@ -386,7 +259,7 @@ export function GroundTruthScreen({
                     Local interference / motion ({classification?.metadata.shortLabel ?? 'Active'})
                   </Text>
                   <Text style={styles.interferenceSub}>
-                    Flagged spikes from motion, hands, or electronics are excluded from geomagnetic statistics.
+                    The local matcher suggests possible interference. Deterministic QC determines usable samples; neither step establishes a physical source.
                   </Text>
                 </View>
               </View>
@@ -397,18 +270,18 @@ export function GroundTruthScreen({
                 <Text style={styles.qualityTitle}>Local sensor screening quality</Text>
                 <View style={styles.qualityBadge}>
                   <Text style={styles.qualityBadgeText}>
-                    {qc ? (qc.accepted ? 'QC Accepted' : 'QC Flagged') : 'Standstill Clean'}
+                    {qc ? (qc.accepted ? 'QC Accepted' : 'QC Flagged') : 'QC pending'}
                   </Text>
                 </View>
               </View>
               <View style={styles.qualityChecklist}>
                 <View style={styles.checkItem}>
-                  <Text style={styles.checkIcon}>✅</Text>
-                  <Text style={styles.checkText}>Device stationary</Text>
+                  <Text style={styles.checkIcon}>ℹ️</Text>
+                  <Text style={styles.checkText}>{motionAnalysis.isStandstill ? 'Motion screen: stationary' : 'Motion context uncertain'}</Text>
                 </View>
                 <View style={styles.checkItem}>
-                  <Text style={styles.checkIcon}>✅</Text>
-                  <Text style={styles.checkText}>Noise MAD &lt; 250 nT</Text>
+                  <Text style={styles.checkIcon}>ℹ️</Text>
+                  <Text style={styles.checkText}>{noiseMad === null ? 'Baseline noise unavailable' : `MAD ${noiseMad?.toFixed(1) ?? '—'} nT`}</Text>
                 </View>
                 <View style={styles.checkItem}>
                   <Text style={styles.checkIcon}>⚖️</Text>
@@ -427,7 +300,7 @@ export function GroundTruthScreen({
               <View style={styles.gaugeLabelRow}>
                 <Text style={styles.gaugeName}>1. Sensor Placement Quietness:</Text>
                 <Text style={styles.gaugeScore}>
-                  {noiseMad < 100 ? '🟢 Excellent (<100 nT)' : noiseMad <= 250 ? '🟡 Fair (100–250 nT)' : '🟠 Noisy (>250 nT)'}
+                  {noiseMad === null ? 'Unavailable' : noiseMad < 100 ? '🟢 Excellent (<100 nT)' : noiseMad <= 250 ? '🟡 Fair (100–250 nT)' : '🟠 Noisy (>250 nT)'}
                 </Text>
               </View>
               <View style={styles.gaugeTrack}>
@@ -435,14 +308,14 @@ export function GroundTruthScreen({
                   style={[
                     styles.gaugeFill,
                     {
-                      width: `${Math.max(12, Math.min(96, 100 - (noiseMad / 300) * 100))}%`,
-                      backgroundColor: noiseMad < 100 ? colors.mint : noiseMad <= 250 ? colors.amber : colors.red,
+                      width: `${Math.max(12, Math.min(96, noiseMad === null ? 0 : 100 - (noiseMad / 300) * 100))}%`,
+                      backgroundColor: noiseMad === null ? colors.muted : noiseMad < 100 ? colors.mint : noiseMad <= 250 ? colors.amber : colors.red,
                     },
                   ]}
                 />
               </View>
               <Text style={styles.gaugeFootnote}>
-                Baseline Noise MAD: <Text style={styles.boldWhite}>{noiseMad.toFixed(1)} nT</Text> (QC limit: 250 nT)
+                Baseline Noise MAD: <Text style={styles.boldWhite}>{noiseMad?.toFixed(1) ?? '—'} nT</Text> (QC limit: 250 nT)
               </Text>
             </View>
 
@@ -451,7 +324,7 @@ export function GroundTruthScreen({
               <View style={styles.gaugeLabelRow}>
                 <Text style={styles.gaugeName}>2. Local Excursion Amplitude:</Text>
                 <Text style={[styles.gaugeScore, { color: colors.cyan }]}>
-                  {p95Delta >= 200 ? '🟠 Candidate Excursion' : '🟢 Quiet Baseline'}
+                  {p95Delta === null ? 'Unavailable' : p95Delta >= 200 ? '🟠 Candidate Excursion' : '🟢 Quiet Baseline'}
                 </Text>
               </View>
               <View style={styles.gaugeTrack}>
@@ -459,14 +332,14 @@ export function GroundTruthScreen({
                   style={[
                     styles.gaugeFill,
                     {
-                      width: `${Math.min(95, Math.max(8, (p95Delta / 600) * 100))}%`,
+                      width: `${Math.min(95, Math.max(8, p95Delta === null ? 0 : (p95Delta / 600) * 100))}%`,
                       backgroundColor: colors.cyan,
                     },
                   ]}
                 />
               </View>
               <Text style={styles.gaugeFootnote}>
-                95% Excursion Δ|B|: <Text style={styles.boldWhite}>{p95Delta.toFixed(0)} nT</Text> · Single-site regional verdict: <Text style={styles.boldWhite}>INCONCLUSIVE</Text>
+                95% Excursion Δ|B|: <Text style={styles.boldWhite}>{p95Delta?.toFixed(0) ?? '—'} nT</Text> · Single-site regional verdict: <Text style={styles.boldWhite}>INCONCLUSIVE</Text>
               </Text>
             </View>
           </View>

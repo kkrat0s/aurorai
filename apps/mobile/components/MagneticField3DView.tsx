@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -16,6 +16,7 @@ import type {
 
 interface MagneticField3DViewProps {
   currentMagMicroT: number;
+  hasMeasurement?: boolean;
   deltaNt: number;
   bx: number;
   by: number;
@@ -24,7 +25,7 @@ interface MagneticField3DViewProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onZeroBaseline?: () => void;
-  onConfirmObject?: (classId: DisturbanceClassId, label: string) => void;
+  onConfirmObject?: (classId: DisturbanceClassId, label: string, observed: DisturbanceClassificationResult) => void;
   isScreenTouched?: boolean;
   compact?: boolean;
 }
@@ -90,6 +91,7 @@ const QUICK_VALIDATE_ITEMS: Array<{
 
 export function MagneticField3DView({
   currentMagMicroT,
+  hasMeasurement = true,
   deltaNt,
   bx,
   by,
@@ -103,6 +105,7 @@ export function MagneticField3DView({
   compact = false,
 }: MagneticField3DViewProps) {
   const [phase, setPhase] = useState(0);
+  const [customLabel, setCustomLabel] = useState('');
   const [userRot, setUserRot] = useState({ x: 0.46, y: -0.38 });
   const dragRef = useRef({ startX: 0.46, startY: -0.38 });
 
@@ -128,11 +131,11 @@ export function MagneticField3DView({
       absDeltaNt > 180);
 
   useEffect(() => {
-    if (isPerturbed) {
+    if (isPerturbed && classification.trainable && !isScreenTouched && !customLabel) {
       setLastActiveClassification(classification);
       setWhisperVisibleUntil(Date.now() + 5500);
     }
-  }, [isPerturbed, classification]);
+  }, [isPerturbed, classification, isScreenTouched, customLabel]);
 
   const showEphemeralCard = Date.now() < whisperVisibleUntil || isPerturbed || justValidatedLabel !== null;
 
@@ -333,8 +336,10 @@ export function MagneticField3DView({
   const centerProj = project3D({ x: 0, y: 0, z: 0 }, rotX, rotY, rotZ, cx, cy);
 
   const handleConfirm = (classId: DisturbanceClassId, label: string) => {
-    onConfirmObject?.(classId, label);
+    if (!lastActiveClassification.trainable) return;
+    onConfirmObject?.(classId, label, lastActiveClassification);
     setJustValidatedLabel(label);
+    setCustomLabel('');
     setTimeout(() => {
       setJustValidatedLabel(null);
       setWhisperVisibleUntil(0);
@@ -352,7 +357,7 @@ export function MagneticField3DView({
       <View style={styles.topHud}>
         <View style={styles.valueRow}>
           <Text style={[styles.heroMagValue, { color: primaryColor }]}>
-            {currentMagMicroT.toFixed(1)}
+            {hasMeasurement ? currentMagMicroT.toFixed(1) : '—'}
           </Text>
           <View style={styles.unitCol}>
             <Text style={styles.heroMagUnit}>µT</Text>
@@ -387,6 +392,7 @@ export function MagneticField3DView({
         </View>
       </View>
 
+      <Text style={styles.whisperSub}>Conceptual field animation · one local sensor, not a reconstructed field map</Text>
       {/* 3D INTERACTIVE VIEWPORT */}
       <View style={styles.canvasWrap}>
         <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
@@ -556,7 +562,7 @@ export function MagneticField3DView({
           {justValidatedLabel ? (
             <View style={styles.validatedRow}>
               <Text style={styles.validatedText}>
-                ✓ AI learned fingerprint: {justValidatedLabel}
+                User-confirmed label saved: {justValidatedLabel}
               </Text>
             </View>
           ) : (
@@ -570,10 +576,10 @@ export function MagneticField3DView({
                   >
                     {lastActiveClassification.confidence >= 0.78
                       ? activeMeta.name
-                      : `AI Guess: ${activeMeta.name} — Confirm?`}
+                      : `Pattern hypothesis: ${activeMeta.name} — Confirm?`}
                   </Text>
                   <Text style={styles.whisperSub} numberOfLines={1}>
-                    {(lastActiveClassification.confidence * 100).toFixed(0)}% match · Tap to validate what is near the phone:
+                    {(lastActiveClassification.confidence * 100).toFixed(0)}/100 heuristic score · label the known test object:
                   </Text>
                 </View>
                 <Pressable
@@ -585,8 +591,10 @@ export function MagneticField3DView({
                 </Pressable>
               </View>
 
-              {onConfirmObject ? (
+              {onConfirmObject && lastActiveClassification.trainable ? (
                 <View style={styles.validatePillsRow}>
+                  <TextInput accessibilityLabel="New object label" value={customLabel} onChangeText={setCustomLabel} maxLength={64} placeholder="Name a new test object" placeholderTextColor="#8ea8c4" style={{ color: '#eff7ff', minWidth: 180, padding: 8 }} />
+                  <Pressable disabled={!customLabel.trim()} onPress={() => handleConfirm('UNKNOWN_UNCLASSIFIED', customLabel.trim())} style={styles.validatePill}><Text style={styles.validatePillText}>Save new pattern</Text></Pressable>
                   {QUICK_VALIDATE_ITEMS.map((item) => {
                     const isCurrentGuess = lastActiveClassification.predictedClass === item.classId;
                     return (

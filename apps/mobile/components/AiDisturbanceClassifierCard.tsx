@@ -20,7 +20,7 @@ export function AiDisturbanceClassifierCard({
 
   if (!classification) return null;
 
-  const { metadata, confidence, signature, solarStormSignalRatio, fingerprintHash } = classification;
+  const { metadata, confidence, signature, fingerprintHash } = classification;
 
   return (
     <>
@@ -29,7 +29,7 @@ export function AiDisturbanceClassifierCard({
           <View style={styles.titleWithIcon}>
             <Text style={styles.icon}>{metadata.icon}</Text>
             <View>
-              <Text style={styles.eyebrow}>AI DISTURBANCE DETECTOR</Text>
+              <Text style={styles.eyebrow}>LOCAL PATTERN MATCHER</Text>
               <Text style={[styles.title, { color: metadata.color }]}>
                 {metadata.name}
               </Text>
@@ -37,13 +37,13 @@ export function AiDisturbanceClassifierCard({
           </View>
           <View style={[styles.confidenceBadge, { backgroundColor: `${metadata.color}22` }]}>
             <Text style={[styles.confidenceText, { color: metadata.color }]}>
-              {Math.round(confidence * 100)}% match
+              {classification.evidenceStatus === 'UNKNOWN' || classification.evidenceStatus === 'INSUFFICIENT_DATA' ? 'Unknown' : `${confidence.toFixed(2)} similarity`}
             </Text>
           </View>
         </View>
 
         <Text style={styles.mechanismText}>
-          {metadata.primaryMechanism}
+          {classification.aiReasoning} Scores are uncalibrated, not probabilities.
         </Text>
 
         <View style={styles.metricsRow}>
@@ -60,9 +60,9 @@ export function AiDisturbanceClassifierCard({
             </Text>
           </View>
           <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>Solar Storm Ratio</Text>
-            <Text style={[styles.metricValue, { color: solarStormSignalRatio > 10 ? '#ffd58c' : '#68edc3' }]}>
-              {solarStormSignalRatio}x
+            <Text style={styles.metricLabel}>Sample window</Text>
+            <Text style={[styles.metricValue, { color: '#aeb9c8' }]}>
+              {(signature.durationMs / 1000).toFixed(1)} s · {signature.sampleCount} samples
             </Text>
           </View>
         </View>
@@ -74,7 +74,7 @@ export function AiDisturbanceClassifierCard({
             style={[styles.actionBtn, { borderColor: metadata.color, backgroundColor: `${metadata.color}18` }]}
           >
             <Text style={[styles.actionBtnText, { color: metadata.color }]}>
-              🔬 Deep AI Physics Analysis
+              🔬 Evidence and limitations
             </Text>
           </Pressable>
 
@@ -85,7 +85,7 @@ export function AiDisturbanceClassifierCard({
             style={[styles.recalBtn, { opacity: calibrating ? 0.5 : 1 }]}
           >
             <Text style={styles.recalBtnText}>
-              {calibrating ? 'Calibrating…' : '↺ Recalibrate'}
+              {calibrating ? 'Setting baseline…' : '↺ Zero display'}
             </Text>
           </Pressable>
         </View>
@@ -96,7 +96,7 @@ export function AiDisturbanceClassifierCard({
         <View style={styles.modalContainer}>
           <ScrollView contentContainerStyle={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalEyebrow}>UNIVERSAL MAGNETIC FINGERPRINT DATABASE</Text>
+              <Text style={styles.modalEyebrow}>LOCAL HEURISTICS AND USER EXAMPLES</Text>
               <Text style={[styles.modalTitle, { color: metadata.color }]}>
                 {metadata.icon} {metadata.name}
               </Text>
@@ -119,17 +119,14 @@ export function AiDisturbanceClassifierCard({
             </View>
 
             <View style={styles.sectionCard}>
-              <Text style={[styles.sectionTitle, { color: '#b9a5ff' }]}>AI Learning & Universal Database</Text>
+              <Text style={[styles.sectionTitle, { color: '#b9a5ff' }]}>Local learning and uncertainty</Text>
               <Text style={styles.bodyText}>
-                The AuroraSense AI classifier compares multi-axis vector gradients, frequency spectrums, and rate of change
-                against canonical signatures in our open database. By learning to recognize the distinctive electromagnetic
-                fingerprints of human hands, smartwatches, and electronics, the system can automatically flag local artifacts
-                and verify true global ionospheric disturbances caused by solar wind reconnection.
+                The local matcher compares amplitude, rate of change, axis variation and step roughness with user-labeled examples. A similarity score is not a probability or measured accuracy. It can abstain when examples conflict or acquisition is invalid. This matcher cannot establish object identity or geomagnetic origin.
               </Text>
             </View>
 
             <View style={styles.databaseOverviewCard}>
-              <Text style={styles.databaseHeader}>Canonical Database Signatures</Text>
+              <Text style={styles.databaseHeader}>Candidate patterns</Text>
               {Object.values(UNIVERSAL_FINGERPRINT_DATABASE).map((entry) => {
                 const isCurrent = entry.id === metadata.id;
                 return (
@@ -146,7 +143,7 @@ export function AiDisturbanceClassifierCard({
                         {entry.name} {isCurrent && '← (Active Match)'}
                       </Text>
                       <Text style={styles.dbDelta}>
-                        Typical ΔB: {entry.typicalDeltaNanoT[0].toLocaleString()}–{entry.typicalDeltaNanoT[1].toLocaleString()} nT
+                        Source-specific amplitude range: not established
                       </Text>
                     </View>
                   </View>

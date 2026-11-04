@@ -567,3 +567,58 @@ Final documentation check: 114 publication candidates / 7,478,085 bytes before t
    - `npm test`: **101 passed** across 11 test files.
    - `npm run build`: Next.js 16.4.3 production build **succeeded**.
 
+
+
+## Submission hardening — 2026-11-04
+
+Scope: preserve the intro/visual direction while fixing device learning, flaky local aurora analysis and actual ground comparisons. Read-only inspection of `D:/coding/solar_storm` confirmed its NOAA graphs use upstream IMF/plasma; these are not local ground magnetometer measurements. No files there were changed.
+
+### Working functionality
+
+- Human-confirmed local pattern learning now supports new labels, context/cadence compatibility, abstention, validated local persistence, acquisition-run identities, and exclusion of training/overlapping windows. The displayed eligible pre-touch window is the example labeled; recent touches block teaching until the buffer clears. Scores are uncalibrated similarities, not device-identification probabilities. The browser simulator now supplies enough explicitly synthetic samples and a separate repeat-trial window.
+- Actual-only aurora assessment joins geographic OVATION, current and forecast-valid-time darkness, sampled southward IMF, solar-wind speed/density, estimated Kp and professional ground context. Missing/stale/future/invalid sources remain visible. Unknown clouds/sightings remain unknown. No fixed 38–90% latitude probability, fabricated ground coherence or solar context remains in the primary analysis.
+- Reproduced and fixed NOAA acquisition failure: old duplicate active records discarded whole magnetic/plasma feeds. Identical duplicates now collapse; conflicts become gaps; partial products survive. Actual four-source verification is saved in `docs/noaa-live-verification-2026-11-04.json`.
+- Actual USGS BOU/FRD/BSL/CMO/TUC scalar F acquisition, source hashes, minute timestamps, missing gaps and provisional quality. Live checks passed all five stations (181 rows/180 valid readings in the tested three-hour windows). Phone comparison uses real shared UTC minutes, common nT scale and QC/geography/clock gates; single-phone regional result remains INCONCLUSIVE. Unknown phone region is the default.
+- Prescriptive reports no longer infer Kp/G severity, calibrated thermal noise or a solar cause from phone amplitude. Unsupported object amplitude tables, fixed missing statistics and conceptual SAM masks were removed.
+- Mobile foreground lifecycle now suspends preview and recording listeners on background, cancels pending asynchronous startup, rejects invalid native timestamps/readings and preserves unknown motion/power. Explicit adult/local-recording consent replaced automatic attestation. Primary journey now exposes export/delete, replacement decisions, 30s/2m/10m controls and accessible scrollable analysis. Native behavior still needs owner smoke testing.
+- Public filesystem ingestion now fails closed with 503; public paid Spark action fails with 403. The existing authenticated `/api/agent` retains its controls. Local exports continue; no unsafe public raw-data collection is enabled.
+
+### Genuine Muse Spark run
+
+Executed the actual seven-tool engine through the new owner-operated local CLI, using only public current USGS BOU observations, zero phone sessions and zero volunteers. Standard `muse-spark-1.3` completed **4 real requests**, **11,353 input / 2,435 output tokens**, estimated **$0.024540** ($0.024541 in per-request rounded ledger entries).
+
+Actual calls: event context → regional coverage → reference magnetometers → regional coherence → observation request (**BLOCKED: invitation delivery not configured**) → canonical research report (**INCONCLUSIVE**, nonsynthetic). `run_local_qc` had no eligible phone and was not fabricated. One professional reference was loaded, but zero references can be phone-aligned with zero phone sites. No message, sensor activation or public deployment occurred.
+
+Private raw run/journal remain ignored. Reviewed public summary and source hash: `docs/meta-run-verification-2026-11-04.json`. The web displays this as **RECORDED REAL META RUN**, separate from its synthetic scripted workflow. It does not make another model call when viewed.
+
+After the owner reconfirmed the $150 credit, the local $0.50 development cap was migrated append-only to the exact plan allocation: $150 overall, $120 operational, $30 protected reserve; this science CLI $45 cumulative and $20/day UTC. All existing ledger bytes and usage were preserved, and migration was idempotent. Other account/API paths are not automatically reconciled by this local ledger. No further paid requests were made for migration.
+
+### Actual verification
+
+- `npm test`: **170 passed across 17 files**. Includes nine local ledger/coordinator CLI tests, 22 fingerprint tests, 18 aurora evidence tests, NOAA duplicates/partial failure, reference alignment and three public security-boundary tests.
+- `npm run test:science`: **28 passed**. The prior measured OMNI/BOU experiment was not retrained or embellished.
+- `npm run typecheck`: passed; `npm run typecheck --prefix apps/mobile`: passed, including final consent/export changes.
+- `npm run lint`: passed, zero warnings; targeted new CLI lint also passed.
+- `npm run build`: production Next.js build passed. One repeat while the local production server was running encountered Windows EPERM in `.next`; stopping that server and rebuilding resolved it.
+- `expo export --platform ios --output-dir dist-ios`: passed, 908 modules, 2.9 MB Hermes bundle. Initial sandbox attempts failed because Hermes could not write its temporary bytecode file; the authorized external-sandbox rerun succeeded. Bundling does not prove hardware behavior.
+- Android bundle and final responsive checks are recorded in the verification addendum below.
+- Independent Oct31 private export recomputation exactly matched supplied QC: 5,985 samples, 600.023431 s, 9.972944 Hz, baseline MAD 62.010769 nT, baseline 46.095242 microtesla, zero flags/gaps, all samples locally usable. The corrected experiment report retracts prior intrinsic-noise, G-level, absolute-stillness and causal storm claims.
+
+### Documentation and remaining gates
+
+README rewritten with truthful capabilities, setup, all screen tests, physical experiment, real Meta run, reproducible scientific scores, source/privacy boundaries and a three-minute storyboard. Comprehensive plan + accuracy/gaps + blue/red-team review: `docs/submission-readiness-2026-11-04.md`. Detailed source/pattern/Meta reviews linked there.
+
+Unresolved science: recognition precision/recall, optical probability calibration, weather/verified sightings, empirical UTC accuracy, multiple independent phone sites, Android physical tests and paired EZIE validation. The owner deferred EZIE. The retrospective learned candidate still loses MAE to persistence; no phone forecasting improvement is established.
+
+Unresolved product gates: hosted Supabase Auth/RLS/private upload/delete and actual participant invitation delivery are not verified. Public deployment, GitHub push, video upload and portal submission were not performed. Final exact owner actions: reload Expo; test consent/start/background/stop/export/delete and a fresh independent labeled-object repetition; review the real-run artifact; record the three-minute demo; verify public repository/video access; submit before 21:00 ET.
+
+### Verification addendum
+
+- `expo export --platform android --output-dir dist-android`: passed, 907 modules, 2.9 MB Hermes bundle. This is a compilation check, not a physical Android test.
+- Production browser inspection passed at desktop and a 390 × 844 viewport (375 CSS pixels of content after the scrollbar). The new audit panel initially overflowed; after the fix, document scroll width equaled client width (375 px). Inspected actual live NOAA/USGS evidence and the dated real Meta audit. Screenshots: `docs/screenshots/real-meta-run-2026-11-04.png` and `docs/screenshots/live-ground-phone-2026-11-04.png`.
+- Final content review removed remaining hardcoded rate/frequency claims from the imported-phone analysis card and labeled its deterministic analysis and critique as no model call. The genuine Spark run remains separately identified. Fixed the README Windows smoke command and updated contribution/backend records to reflect actual local execution and unresolved hosted integration.
+- After those final UI text changes, lint passed again and the production build passed outside the filesystem sandbox. Its preceding sandbox attempt compiled/typechecked but failed creating a generated `_not-found` output directory with EPERM. This was an environment restriction, not a passing build; only the successful rerun is counted.
+- Private recordings, provider configuration and local run journals remain untracked/ignored. Only environment examples appeared in the tracked-file check. Publication still requires owner review of staged files and accessible video/repository links.
+- Mobile's old hardcoded “Connected” pill now opens “Muse Spark · Evidence.” Its drawer includes the same reviewed recorded-real-run artifact as the web, with expandable actual actions and blocked-delivery limitations; its synthetic workflow remains separate. No request is made by opening the artifact.
+- Final intro review preserved the animation while removing universal chip-destruction claims, invented damage costs/reconnection counts, unmeasured scenario telemetry and purported historical quotations. Labels now describe conceptual service disruption with primary [NOAA impacts](https://www.spaceweather.gov/impacts) and [space-weather explanation](https://www.noaa.gov/explainers/space-weather-storms-from-sun) links. This corrects the earlier November 2 progress description; the animations are not reconstructed measurements or damage forecasts.
+- Final post-correction checks passed: mobile typecheck, web/packages lint, production build, iOS export (909 modules, 2.9 MB) and Android export (908 modules, 2.9 MB), plus `git diff --check`. Browser reload confirmed corrected intro labels and fresh actual USGS readings. Final recorded-audit screenshot: `docs/screenshots/submission-demo-2026-11-04.png`. The web preview is running on loopback port 3000; phone LAN access requires the README's LAN-server setup.

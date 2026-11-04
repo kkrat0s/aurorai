@@ -1,6 +1,6 @@
 # Observation coordinator and private backend
 
-Implemented on 2026-10-28. This document separates working local code from integration gates.
+Initially implemented on 2026-10-28; execution status updated 2026-11-04. This document separates working local code from integration gates.
 
 ## Working local workflow
 
@@ -26,7 +26,9 @@ Official references verified on 2026-10-28: [Responses endpoint](https://dev.met
 
 Real runs require a durable budget ledger and run journal. `@aurorasense/coordinator/supabase` supplies both through managed Supabase REST. Reservations are atomic PostgreSQL RPCs; uncertain failures keep their reserved cost. The coordinator allocation is capped at $45 total, $5 per UTC day, 100 calls per UTC day and 1,000 total calls. This leaves other approved grant allocations untouched. Each reservation uses a conservative UTF-8-byte input-token upper bound plus envelope allowance and output cap. Duplicate request IDs are refused. Never run other model experiments against this ledger as if it were the entire project budget. A trusted server may separately authorize `syntheticParticipantsAllowed` for a genuine model call over a clearly labeled simulated participant workflow; execution mode and participant provenance remain separate.
 
-**No credentialed Meta request has been made or tested in this session.** Transport tests use mocks and return `MOCK_TRANSPORT`. The implemented `/api/agent` route is not deployed or credentialed. The web currently offers the explicitly scripted replay. Model latency, actual billable usage, genuine tool choice and actual follow-up behavior remain unmeasured.
+**A credentialed local Meta run completed on November 4.** The owner-operated CLI used the actual transport and coordinator with public USGS BOU input, zero phones and zero volunteers: four requests, six model-selected tool actions, a blocked invitation and a canonical nonsynthetic `INCONCLUSIVE` report. Estimated token cost was $0.024540; provider invoice reconciliation remains separate. See [reviewed artifact](meta-run-verification-2026-11-04.json) and [local execution guide](local-meta-demo.md). The web displays this dated record separately from scripted replay. This does not verify the hosted `/api/agent`, Supabase RLS or actual participant delivery. Transport unit tests still use mocks.
+
+The local CLI has its own append-only ledger: $45 science allocation, $20 per UTC day, 200 requests per day and 2,000 cumulatively, within the owner's $150 plan ($120 operational / $30 protected reserve). The stricter hosted ledger limits described above have not been changed. These ledgers do not reconcile other account usage automatically.
 
 ## Authenticated application route
 
@@ -51,4 +53,4 @@ All tables enable RLS, revoke default anonymous/authenticated rights, then grant
 - `npm exec eslint packages/coordinator -- --max-warnings 0`: passed.
 - Mock persistence tests exercise fixed managed URLs, atomic RPC payloads, SHA-256 journals and safe error handling. They do not test PostgreSQL/RLS behavior.
 
-Next integration action: apply all three migrations to an authorized isolated Supabase project, run pgTAP under actual roles, verify private upload/delete and derived-summary ingestion, wire transactional invitations/acceptance, then use verified server auth and a server-side Meta key to record a bounded real tool loop. Maintain the scripted replay label until that evidence exists.
+Next hosted integration action: apply the migrations to an authorized isolated Supabase project, run pgTAP under actual roles, verify private upload/delete and derived-summary ingestion, wire transactional invitations/acceptance, then record a bounded authenticated hosted tool loop. The successful owner-operated local run is separate evidence. Keep the scripted replay label on the synthetic workflow permanently.
