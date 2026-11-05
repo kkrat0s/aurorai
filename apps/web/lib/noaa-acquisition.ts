@@ -45,7 +45,23 @@ export function createNoaaLoader(fetcher:typeof fetch=fetch,clock:()=>number=Dat
     if(cached&&clock()-cached.at>=0&&clock()-cached.at<cacheMs)return cached.value;
     if(pending)return pending;
     pending=acquire();
-    try{const value=await pending;if(value.latestNoaa.ovation||value.latestNoaa.solarWind||value.latestNoaa.kp)cached={at:clock(),value};return value;}
+    try{
+      const value=await pending;
+      // A temporary outage must not erase a verified snapshot. Every retained
+      // product keeps its own original observation, validity and retrieval times.
+      const retained: string[]=[];
+      for(const key of ['ovation','solarWind','kp'] as const){
+        if(!value.latestNoaa[key]&&cached?.value.latestNoaa[key]){
+          Object.assign(value.latestNoaa,{[key]:cached.value.latestNoaa[key]});retained.push(key);
+        }
+      }
+      if(retained.length){
+        value.errors.push(`Retained last verified ${retained.join(', ')} snapshot with original timestamps; freshness must be checked.`);
+        const retainedIds=new Set(retained.flatMap(key=>key==='solarWind'?['mag','wind']:[key]));
+        value.manifests=[...(cached?.value.manifests??[]).filter(manifest=>retainedIds.has(String(manifest.sourceId))),...value.manifests.filter(manifest=>!retainedIds.has(String(manifest.sourceId)))];
+      }
+      if(value.latestNoaa.ovation||value.latestNoaa.solarWind||value.latestNoaa.kp)cached={at:clock(),value};return value;
+    }
     finally{pending=null;}
   };
 }

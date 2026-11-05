@@ -55,6 +55,7 @@ describe('prospective hands-free experiment and interaction annotations', () => 
     session.markers[0].origin = 'SCHEDULED_CUE';
     session.markers[0].scheduledSeconds = 150;
     session.markers.push({ kind: 'MOTION_START', atUtc: session.startedAtUtc, elapsedSeconds: 0 });
+    session.markers.push({ kind: 'INTERFERENCE_START', atUtc: session.startedAtUtc, elapsedSeconds: 0, origin: 'MANUAL_TOUCH' });
     const context = analyzeInteractionContext(session, analyzeSensorSession(session));
     expect(context.samplesNearTouch).toBe(0);
     expect(context.scheduledCues).toBe(1);
@@ -63,6 +64,7 @@ describe('prospective hands-free experiment and interaction annotations', () => 
   it('sanitizes optional marker metadata and rejects invented origins/schedules', () => {
     const session = generatedSession();
     session.experimentProtocol = 'hands-free-protocol-0.1.0';
+    session.markers.push({ kind: 'BATTERY_FULL', atUtc: session.startedAtUtc, elapsedSeconds: 0, origin: 'SYSTEM_EVENT' });
     expect(parseSensorSession(session)).toEqual(session);
     const corrupt = JSON.parse(JSON.stringify(session));
     corrupt.markers[0].origin = 'VERIFIED_ACTION';

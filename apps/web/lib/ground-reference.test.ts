@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { acquireGroundReference, groundSourceUrl, parseGroundReference } from './ground-reference';
-import { comparePhoneWithReference, groundFreshness } from '@aurorasense/shared/ground-reference';
+import { acquireGroundReference, getBestLiveGroundReference, groundSourceUrl, parseGroundReference } from './ground-reference';
+import { coarseLocationFromCoordinates, comparePhoneWithReference, groundFreshness, rankGroundStations } from '@aurorasense/shared/ground-reference';
 import { analyzeSensorSession, type SensorSession } from '@aurorasense/shared/sensor';
 import { GET } from '../app/api/ground/route';
 
@@ -37,7 +37,7 @@ describe('USGS live scalar reference', () => {
     const invalidCalendar = source(); invalidCalendar.times[0] = '2026-02-30T11:50:00Z'; expect(() => parseGroundReference(invalidCalendar, 'BOU', url, now, sha)).toThrow();
   });
   it('rejects unknown stations and unbounded API inputs before remote acquisition', async () => {
-    for (const query of ['station=INVALID', 'station=BOU&station=FRD', 'station=BOU&starttime=1900-01-01', 'url=https://example.com']) {
+    for (const query of ['station=INVALID', 'station=BOU&station=FRD', 'station=BOU&starttime=1900-01-01', 'url=https://example.com', 'stations=BOU,INVALID', 'stations=BOU,BOU', 'stations=BOU&station=FRD', 'stations=BOU&latitude=28', 'stations=']) {
       const response = await GET(new Request(`http://localhost/api/ground?${query}`));
       expect(response.status).toBe(400); expect((await response.json()).reference).toBeNull();
     }
@@ -46,6 +46,39 @@ describe('USGS live scalar reference', () => {
     const fetcher = (async () => new Response('a'.repeat(512_001))) as typeof fetch;
     await expect(acquireGroundReference('BOU', now, fetcher)).rejects.toThrow('512 KB');
     await expect(acquireGroundReference('BOU', now, (async () => new Response('', { status: 503 })) as typeof fetch)).rejects.toThrow('503');
+  });
+});
+describe('automatic location and reference selection', () => {
+  it('discards precise coordinates and rejects invalid or very inaccurate fixes', () => {
+    expect(coarseLocationFromCoordinates(28.12345, -81.98765, 100)).toEqual({ latitude: 28, longitude: -82, uncertaintyKm: 40.1 });
+    expect(coarseLocationFromCoordinates(NaN, 0)).toBeUndefined();
+    expect(coarseLocationFromCoordinates(91, 0)).toBeUndefined();
+    expect(coarseLocationFromCoordinates(28, -82, 50_001)).toBeUndefined();
+  });
+  it('ranks known public stations using geography, never a fixed Boulder default for a known region', () => {
+    expect(rankGroundStations({ latitude: 28, longitude: -82 })[0]).toBe('BSL');
+    expect(rankGroundStations({ latitude: 65, longitude: -148 })[0]).toBe('CMO');
+    expect(rankGroundStations()).toHaveLength(5);
+  });
+  it('tries the bounded station list and selects a fresh fallback over a closer stale source', async () => {
+    const reference = parseGroundReference(source(), 'BOU', url, now, sha);
+    const calls: string[] = [];
+    const result = await getBestLiveGroundReference(['BSL', 'FRD', 'BOU'], async station => {
+      calls.push(station);
+      if (station === 'BSL') throw new Error('Offline');
+      return { ...reference, stationId: station, latestObservedAtUtc: station === 'FRD' ? '2026-11-04T10:00:00Z' : reference.latestObservedAtUtc };
+    }, now);
+    expect(calls).toEqual(['BSL', 'FRD', 'BOU']); expect(result.reference?.stationId).toBe('BOU'); expect(result.selection?.fallback).toBe(true); expect(result.errors).toContain('BSL refresh unavailable.');
+  });
+  it('does not turn failed, missing or future references into available observations', async () => {
+    const reference = parseGroundReference(source(), 'BOU', url, now, sha);
+    const result = await getBestLiveGroundReference(['BOU'], async () => ({ ...reference, latestObservedAtUtc: '2026-11-05T12:00:00Z' }), now);
+    expect(result.reference).toBeNull();
+    await expect(getBestLiveGroundReference(['BOU', 'BOU'])).rejects.toThrow('Invalid station order');
+  });
+  it('keeps location uncertainty in the local comparison boundary', () => {
+    const session = phone(), qc = analyzeSensorSession(session), reference = parseGroundReference(source(), 'BOU', url, now, sha);
+    expect(comparePhoneWithReference(session, qc, reference, now, { latitude: 40, longitude: -105, uncertaintyKm: 501 }).correlation).toBeNull();
   });
 });
 describe('UTC-aligned phone/ground descriptive comparison (test-generated inputs)', () => {

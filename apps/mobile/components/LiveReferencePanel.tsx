@@ -1,34 +1,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Line, Path, Text as SvgText } from 'react-native-svg';
-import { comparePhoneWithReference, GROUND_STATIONS, groundFreshness, type CoarseLocation, type GroundReference, type GroundResponse } from '@aurorasense/shared/ground-reference';
+import { comparePhoneWithReference, rankGroundStations, stationDistanceKm, groundFreshness, type CoarseLocation, type GroundReference, type GroundResponse } from '@aurorasense/shared/ground-reference';
 import type { SensorQcResult, SensorSession } from '@aurorasense/shared/sensor';
 
-const REGIONS = [
-  { name: 'Unknown', location: undefined },
-  { name: 'Boulder', location: { latitude: 40, longitude: -105 } },
-  { name: 'Fairbanks', location: { latitude: 65, longitude: -148 } },
-  { name: 'Florida', location: { latitude: 28, longitude: -82 } },
-  { name: 'Honolulu', location: { latitude: 21, longitude: -158 } },
-];
+import { captureLocation, useForegroundLocation } from '../foreground-location';
+import { UpstreamContext, type NoaaContext } from './UpstreamContext';
 
 export function LiveReferencePanel({ session, qc, apiBaseUrl, coarseLocation }: { session: SensorSession | null; qc: SensorQcResult | null; apiBaseUrl: string; coarseLocation?: CoarseLocation }) {
-  const [station, setStation] = useState('BOU'); const [reference, setReference] = useState<GroundReference | null>(null);
-  const [region, setRegion] = useState(0);
-  const location = coarseLocation ?? REGIONS[region].location;
+  const fix = useForegroundLocation();
+  const nearby = fix.status === 'ready' ? fix.location : undefined;
+  const location = coarseLocation ?? captureLocation(session?.id);
+  const stations = rankGroundStations(location ?? nearby).join(',');
+  const [reference, setReference] = useState<GroundReference | null>(null);
+  const [latestNoaa, setLatestNoaa] = useState<NoaaContext | null>(null);
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false); const [refresh, setRefresh] = useState(0);
   const [active, setActive] = useState(AppState.currentState === 'active'); const [now, setNow] = useState(() => new Date().toISOString());
   useEffect(() => { const listener = AppState.addEventListener('change', state => setActive(state === 'active')); return () => listener.remove(); }, []);
   useEffect(() => {
     if (!active || !apiBaseUrl) return;
     let mounted = true; const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 15_000); setBusy(true); setError('');
-    fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/ground?station=${station}`, { signal: controller.signal }).then(async response => {
+    fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/ground?stations=${stations}`, { signal: controller.signal }).then(async response => {
       const body = await response.json() as GroundResponse;
       if (!mounted) return; if (!response.ok || !body.reference) throw new Error('Source unavailable');
       setReference(body.reference); setError(body.errors.join(' ')); setNow(new Date().toISOString());
-    }).catch(() => { if (mounted) setError('Live station unavailable. Any retained readings keep their original timestamps.'); }).finally(() => { clearTimeout(timer); if (mounted) setBusy(false); });
+    }).catch(() => { if (mounted) setError('Ground reference refresh delayed. Retained readings keep their original times; upstream context is below.'); }).finally(() => { if (mounted) setBusy(false); });
+    void fetch(`${apiBaseUrl.replace(/\/$/, '')}/api/noaa`, { signal: controller.signal }).then(async response => { if (!response.ok) return; const body = await response.json(); if (mounted) setLatestNoaa(body.latestNoaa); }).catch(() => undefined);
     return () => { mounted = false; clearTimeout(timer); controller.abort(); };
-  }, [active, apiBaseUrl, station, refresh]);
+  }, [active, apiBaseUrl, stations, refresh]);
   useEffect(() => { if (!active) return; const timer = setInterval(() => { setNow(new Date().toISOString()); setRefresh(n => n + 1); }, 60_000); return () => clearInterval(timer); }, [active]);
   const comparison = useMemo(() => comparePhoneWithReference(session, qc, reference, now, location), [session, qc, reference, now, location]);
   const aligned = comparison.aligned;
@@ -40,14 +39,15 @@ export function LiveReferencePanel({ session, qc, apiBaseUrl, coarseLocation }: 
   return <View style={styles.card}>
     <Text style={styles.title}>Live professional ground field</Text>
     <Text style={styles.muted}>USGS F · scalar nT · provisional variation · 1-minute cadence</Text>
-    {!coarseLocation && <><Text style={styles.muted}>Your coarse region · optional, stays on this phone. Choose where this session was recorded; rounded region distance is approximate.</Text><View style={styles.row}>{REGIONS.map((item, index) => <Pressable key={item.name} accessibilityRole="button" accessibilityState={{ selected: region === index }} style={[styles.button, region === index && styles.selected]} onPress={() => setRegion(index)}><Text style={styles.text}>{item.name}</Text></Pressable>)}</View></>}
-    <View style={styles.row}>{GROUND_STATIONS.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`USGS ${item.name}`} style={[styles.button, station === item.id && styles.selected]} onPress={() => { setStation(item.id); setReference(null); }}><Text style={styles.text}>{item.id}</Text></Pressable>)}</View>
+    <Text style={styles.muted}>{fix.message} The nearest fresh supported station is selected automatically.</Text>
+    {fix.status !== 'ready' && fix.status !== 'locating' && <Pressable accessibilityRole="button" style={styles.button} onPress={() => { void fix.refresh(); }}><Text style={styles.text}>Use my location</Text></Pressable>}
     <Pressable accessibilityRole="button" disabled={busy || !apiBaseUrl} style={styles.button} onPress={() => setRefresh(n => n + 1)}><Text style={styles.text}>{busy ? 'Checking USGS…' : 'Refresh ground reference'}</Text></Pressable>
     {!apiBaseUrl && <Text style={styles.warning}>Configure the web API address to load actual reference observations.</Text>}
     {!!error && <Text style={styles.warning}>{error}</Text>}
     {reference ? <>
       <Text style={styles.value}>{reference.samples.findLast(s => s.value !== null)?.value?.toFixed(1) ?? '—'} nT · {groundFreshness(reference, now).toUpperCase()}</Text>
       <Text style={styles.muted}>{reference.stationName} · observed {reference.latestObservedAtUtc ?? 'unavailable'}</Text>
+      {nearby && <Text style={styles.muted}>About {Math.round(stationDistanceKm(nearby, reference) ?? 0)} km from your current coarse location. A remote station is regional context.</Text>}
       <Svg width="100%" height={180} viewBox="0 0 320 180" accessibilityLabel="Actual USGS scalar magnetic changes, with simultaneous phone readings when eligible">
         <Line x1="20" x2="300" y1="80" y2="80" stroke="#385069"/><Path d={trace('station')} stroke="#68edc3" strokeWidth="2" fill="none"/>{aligned.length > 1 && <Path d={trace('phone')} stroke="#b9a5ff" strokeWidth="2" fill="none"/>}
         <SvgText x="20" y="15" fill="#8ea8c4" fontSize="10">±{extent.toFixed(1)} nT · common scale</SvgText><SvgText x="20" y="170" fill="#8ea8c4" fontSize="10">{points.length ? `${new Date(start).toISOString().slice(11, 16)}–${new Date(end).toISOString().slice(11, 16)} UTC` : 'No valid samples'}</SvgText>
@@ -55,9 +55,10 @@ export function LiveReferencePanel({ session, qc, apiBaseUrl, coarseLocation }: 
       <Text style={styles.muted}>{aligned.length > 1 ? 'Violet: phone |B|; green: station F. Each offset by first two common minutes; no lag fitting or amplitude rescaling.' : 'Green: actual station ΔF from first available value in this three-hour window. Missing minutes remain gaps.'}</Text>
       <Text style={styles.muted}>Retrieved {reference.retrievedAtUtc}. Original availability unknown; provisional values may change.</Text>
       <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(reference.sourceUrl); }}><Text style={styles.link}>Open USGS source / station {reference.stationId}</Text></Pressable>
-    </> : <Text style={styles.muted}>No verified reference loaded. No artificial replacement curve.</Text>}
+    </> : <Text style={styles.muted}>Searching the supported observatories for a verified reference.</Text>}
+    <UpstreamContext data={latestNoaa} />
     <Text style={styles.title}>Phone comparison · {comparison.status.replaceAll('_', ' ')}</Text>
-    <Text style={styles.muted}>{comparison.aligned.length} common minutes · {comparison.distanceKm === null ? 'distance unknown' : `${Math.round(comparison.distanceKm)} km from selected coarse region`}{comparison.correlation === null ? '' : ` · descriptive r=${comparison.correlation.toFixed(3)}`}</Text>
+    <Text style={styles.muted}>{comparison.aligned.length} common minutes · {comparison.distanceKm === null ? 'recording location unverified' : `${Math.round(comparison.distanceKm)} km from recording region`}{comparison.correlation === null ? '' : ` · descriptive r=${comparison.correlation.toFixed(3)}`}</Text>
     {comparison.reasons.map(reason => <Text key={reason} style={styles.warning}>{reason}</Text>)}
     <Text style={styles.warning}>Regional evidence: INCONCLUSIVE. NOAA solar-wind GSM Bz is upstream context, not the local ground field measured by your phone.</Text>
   </View>;

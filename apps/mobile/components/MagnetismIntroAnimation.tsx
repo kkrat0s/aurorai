@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, {
   Circle,
@@ -22,10 +23,15 @@ import {
   Interactive3DDeviceInsert,
   type DeviceOverloadState,
 } from './Intro3DMeshes';
+import { CurrentMeasurementsPage, type LivePhonePoint } from './CurrentMeasurementsPage';
 
 interface MagnetismIntroAnimationProps {
   visible: boolean;
   onComplete: () => void;
+  phonePoints: LivePhonePoint[];
+  phoneCurrentMicroT: number | null;
+  phoneDeltaNt: number | null;
+  isRecording: boolean;
 }
 
 interface QuoteStage {
@@ -116,6 +122,58 @@ const SUN_GLOW_GRANULES = Array.from({ length: 28 }, (_, i) => {
     isHotFlare: i % 4 === 0,
   };
 });
+
+const MATRIX_PARTICLES = Array.from({ length: 15 * 19 }, (_, index) => ({
+  id: index,
+  row: Math.floor(index / 19),
+  column: index % 19,
+  color: index % 7 === 0 ? '#ffd166' : index % 3 === 0 ? '#a882ff' : '#38d9a9',
+}));
+
+/** Slow, evenly spaced solar-particle lanes fill the portrait scene without a video asset. */
+function MatrixParticleField() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setElapsed(value => value + 0.08), 80);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <Svg style={styles.matrixSvg} viewBox="0 0 340 380" preserveAspectRatio="xMidYMid meet">
+      <Defs>
+        <RadialGradient id="introMatrixSunGlow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#fff4c2" stopOpacity="0.44" />
+          <Stop offset="35%" stopColor="#ff9d45" stopOpacity="0.2" />
+          <Stop offset="100%" stopColor="#ff542e" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="introMatrixEarthGlow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#38d9a9" stopOpacity="0.22" />
+          <Stop offset="100%" stopColor="#00d1ff" stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Circle cx={28} cy={190} r={72} fill="url(#introMatrixSunGlow)" />
+      <Circle cx={176} cy={190} r={115} fill="url(#introMatrixEarthGlow)" />
+      {Array.from({ length: 7 }, (_, index) => {
+        const lane = (index - 3) * 42;
+        return <Path key={`matrix-lane-${index}`} d={`M 27 ${190 + lane} C 78 ${190 + lane}, 111 ${190 + lane * 0.55}, 176 190 C 226 190, 258 ${190 + lane * 0.58}, 337 ${190 + lane}`} stroke={index % 2 ? '#38d9a9' : '#a882ff'} strokeOpacity={0.1} strokeWidth={1} strokeDasharray="2 9" fill="none" />;
+      })}
+      {MATRIX_PARTICLES.map(particle => {
+        const x = 22 + ((particle.column * 16 + particle.row * 7 + elapsed * 12) % 304);
+        const approach = Math.min(1, Math.max(0, (x - 26) / 150));
+        const departure = Math.min(1, Math.max(0, (x - 176) / 150));
+        const lane = (particle.row - 7) * 21;
+        const y = 190 + lane * (1 - approach * 0.66 + departure * 0.42) + Math.sin(elapsed * 0.7 + particle.column) * 1.8;
+        const radius = 1.1 + ((particle.row + particle.column) % 4) * 0.32;
+        return (
+          <G key={`matrix-particle-${particle.id}`} opacity={0.22 + ((particle.row + particle.column) % 5) * 0.09}>
+            <Path d={`M ${(x - 6).toFixed(1)} ${y.toFixed(1)} L ${x.toFixed(1)} ${y.toFixed(1)}`} stroke={particle.color} strokeWidth={radius} strokeLinecap="round" />
+            <Circle cx={x} cy={y} r={radius} fill={particle.color} />
+          </G>
+        );
+      })}
+    </Svg>
+  );
+}
 
 function buildMagnetospherePaths(stormCompression = 0, tailWavePhase = 0) {
   const ex = 176;
@@ -357,7 +415,8 @@ const SolarMagnetosphereBackdrop = React.memo(function SolarMagnetosphereBackdro
           },
         ]}
       >
-        <Svg width={340} height={240} viewBox="0 0 340 240">
+        <MatrixParticleField />
+        <Svg style={styles.diagramSvg} width={340} height={240} viewBox="0 0 340 240">
           <Defs>
             <RadialGradient id="magFieldGlow" cx="52%" cy="50%" r="50%">
               <Stop
@@ -670,16 +729,26 @@ const SolarMagnetosphereBackdrop = React.memo(function SolarMagnetosphereBackdro
 
 // 4 3D Devices and their 2x2 Square offsets relative to the grid center
 const MODERN_DEVICES = [
-  { id: 'sat' as const, label: 'ORBITAL SATELLITE', slotX: -82, slotY: -62 },
-  { id: 'car' as const, label: 'NAVIGATION', slotX: 82, slotY: -62 },
-  { id: 'phone' as const, label: 'COMMUNICATIONS', slotX: -82, slotY: 62 },
-  { id: 'chip' as const, label: 'POWER DEPENDENCE', slotX: 82, slotY: 62 },
+  { id: 'sat' as const, label: 'Satellites', slotX: -82, slotY: -62 },
+  { id: 'car' as const, label: 'Cars', slotX: 82, slotY: -62 },
+  { id: 'phone' as const, label: 'Phones', slotX: -82, slotY: 62 },
+  { id: 'chip' as const, label: 'All Processors', slotX: 82, slotY: 62 },
 ];
+
+// Each object gets a readable entrance, its own effect, a dock, then a quiet beat.
+const SHOWCASE_DOCK_AT_SECONDS = 3.5;
+const SHOWCASE_DURATION_MS = 4300;
+const SHOWCASE_PAUSE_MS = 1200;
 
 export function MagnetismIntroAnimation({
   visible,
   onComplete,
+  phonePoints,
+  phoneCurrentMicroT,
+  phoneDeltaNt,
+  isRecording,
 }: MagnetismIntroAnimationProps) {
+  const { height: windowHeight } = useWindowDimensions();
   const [stageIdx, setStageIdx] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -692,7 +761,12 @@ export function MagnetismIntroAnimation({
   const [deviceClock, setDeviceClock] = useState(0);
   const activeShowcaseStartRef = useRef(0);
   const [showcaseElapsed, setShowcaseElapsed] = useState(0);
-  const unlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showcaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showcaseAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const sequenceVersionRef = useRef(0);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const closingRef = useRef(false);
 
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
@@ -728,15 +802,23 @@ export function MagnetismIntroAnimation({
   const devTransY = useRef(MODERN_DEVICES.map(() => new Animated.Value(0))).current;
   const devOpacity = useRef(MODERN_DEVICES.map(() => new Animated.Value(0))).current;
 
-  useEffect(() => {
-    return () => {
-      if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current);
-    };
-  }, []);
-
-  // Initial slow fade-in of Quote 1 on mount
+  // A replay always begins at the first page. Hide/unmount invalidates queued showcases.
   useEffect(() => {
     if (!visible) return;
+    sequenceVersionRef.current += 1;
+    closingRef.current = false;
+    setStageIdx(0);
+    setIsTransitioning(false);
+    setShowcaseElapsed(0);
+    setDeviceClock(0);
+    setSolarClock(0);
+    solarClockValRef.current = 0;
+    freezeStartRef.current = null;
+    screenOpacity.setValue(1);
+    cameraZoom.setValue(INITIAL_QUOTES[0].targetZoom);
+    earthOpacity.setValue(INITIAL_QUOTES[0].earthReveal);
+    backdropDimOpacity.setValue(1);
+    devOpacity.forEach(value => value.setValue(0));
     quoteOpacity.setValue(0);
     quoteTranslateY.setValue(12);
     Animated.parallel([
@@ -753,7 +835,20 @@ export function MagnetismIntroAnimation({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [visible, quoteOpacity, quoteTranslateY]);
+    return () => {
+      sequenceVersionRef.current += 1;
+      if (showcaseTimerRef.current) clearTimeout(showcaseTimerRef.current);
+      showcaseAnimationRef.current?.stop();
+      [screenOpacity, cameraZoom, earthOpacity, backdropDimOpacity, quoteOpacity,
+        quoteTranslateY, carringtonWrapOpacity, carringtonPart1Opacity,
+        carringtonPart1TranslateY, carringtonPart2Opacity, carringtonPart2TranslateY,
+        modernTextOpacity, modernTextTranslateY, ...devOpacity, ...devScale,
+        ...devTransX, ...devTransY].forEach(value => value.stopAnimation());
+    };
+  }, [visible, quoteOpacity, quoteTranslateY, screenOpacity, cameraZoom, earthOpacity,
+    backdropDimOpacity, carringtonWrapOpacity, carringtonPart1Opacity,
+    carringtonPart1TranslateY, carringtonPart2Opacity, carringtonPart2TranslateY,
+    modernTextOpacity, modernTextTranslateY, devOpacity, devScale, devTransX, devTransY]);
 
   // Unified simulation loop (automatically idles once a showcase docks so nothing ever lags!)
   useEffect(() => {
@@ -765,12 +860,12 @@ export function MagnetismIntroAnimation({
       const dt = Math.min(0.1, (now - lastTick) / 1000);
       lastTick = now;
 
-      // Update active device showcase timer (Stages 5..8) only while showcasing (< 3.2s)
+      // Only the active mesh animates; previously docked meshes remain still.
       if (stageIdx >= 5 && stageIdx <= 8) {
         const elapsed = (now - activeShowcaseStartRef.current) / 1000;
-        if (elapsed <= 3.3) {
-          setShowcaseElapsed(elapsed);
-          setDeviceClock((prev) => prev + dt);
+        if (elapsed <= SHOWCASE_DURATION_MS / 1000 + 0.1) {
+          setShowcaseElapsed(Math.min(elapsed, SHOWCASE_DURATION_MS / 1000));
+          setDeviceClock(Math.min(elapsed, SHOWCASE_DURATION_MS / 1000));
         }
       }
 
@@ -794,21 +889,19 @@ export function MagnetismIntroAnimation({
     return () => clearInterval(interval);
   }, [visible, stageIdx]);
 
-  // Helper to run a single 3D device showcase on Tap (Stages 5, 6, 7, 8):
+  // One automatic showcase at a time (Stages 5, 6, 7, 8):
   // 1. Zoom in at center of page (ONLINE)
   // 2. Throw sparks & brownout at center of page (BROWNOUT -> BLACKOUT + smoke)
   // 3. Zoom out into its respective 2x2 square!
-  const triggerDeviceShowcase = (devIdx: number, nextStageIdx: number) => {
+  const triggerDeviceShowcase = (devIdx: number) => {
+    if (!visibleRef.current || closingRef.current) return;
+    const sequenceVersion = sequenceVersionRef.current;
     setIsTransitioning(true);
-    setStageIdx(nextStageIdx);
+    setStageIdx(5 + devIdx);
     activeShowcaseStartRef.current = Date.now();
     setShowcaseElapsed(0);
-
-    if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current);
-    // Deterministic safety guard so `isTransitioning` never hangs even on the 4th object!
-    unlockTimerRef.current = setTimeout(() => {
-      setIsTransitioning(false);
-    }, 3150);
+    setDeviceClock(0);
+    if (showcaseTimerRef.current) clearTimeout(showcaseTimerRef.current);
 
     if (devIdx === 0) {
       Animated.timing(backdropDimOpacity, {
@@ -825,49 +918,66 @@ export function MagnetismIntroAnimation({
 
     const targetSlot = MODERN_DEVICES[devIdx];
 
-    Animated.sequence([
-      // Phase A (0.0s - 0.42s): Zoom in to the middle of the page
+    showcaseAnimationRef.current = Animated.sequence([
+      // A gentle entrance, followed by time to recognize the object before the effect.
       Animated.parallel([
         Animated.timing(devOpacity[devIdx], {
           toValue: 1,
-          duration: 320,
+          duration: 500,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(devScale[devIdx], {
           toValue: 1.46,
-          duration: 420,
+          duration: 600,
           easing: Easing.out(Easing.back(1.12)),
           useNativeDriver: true,
         }),
       ]),
-      // Phase B (0.42s - 2.35s): Hold zoomed-in at the middle of the page while it throws sparks, browns out & smokes!
-      Animated.delay(1900),
-      // Phase C (2.35s - 3.05s): Zoom out from the middle of the page into its respective square!
+      Animated.delay(SHOWCASE_DOCK_AT_SECONDS * 1000 - 600),
+      // Dock the completed object before the next object can enter.
       Animated.parallel([
         Animated.timing(devScale[devIdx], {
           toValue: 1.0,
-          duration: 700,
+          duration: SHOWCASE_DURATION_MS - SHOWCASE_DOCK_AT_SECONDS * 1000,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(devTransX[devIdx], {
           toValue: targetSlot.slotX,
-          duration: 700,
+          duration: SHOWCASE_DURATION_MS - SHOWCASE_DOCK_AT_SECONDS * 1000,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(devTransY[devIdx], {
           toValue: targetSlot.slotY,
-          duration: 700,
+          duration: SHOWCASE_DURATION_MS - SHOWCASE_DOCK_AT_SECONDS * 1000,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
-    ]).start(() => {
-      if (unlockTimerRef.current) clearTimeout(unlockTimerRef.current);
-      setIsTransitioning(false);
+    ]);
+    showcaseAnimationRef.current.start(({ finished }) => {
+      if (!finished || sequenceVersion !== sequenceVersionRef.current || !visibleRef.current || closingRef.current) return;
+      setShowcaseElapsed(SHOWCASE_DURATION_MS / 1000);
+      showcaseTimerRef.current = setTimeout(() => {
+        if (sequenceVersion !== sequenceVersionRef.current || !visibleRef.current || closingRef.current) return;
+        if (devIdx < MODERN_DEVICES.length - 1) triggerDeviceShowcase(devIdx + 1);
+        else setIsTransitioning(false);
+      }, SHOWCASE_PAUSE_MS);
     });
+  };
+
+  const finishIntro = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    sequenceVersionRef.current += 1;
+    if (showcaseTimerRef.current) clearTimeout(showcaseTimerRef.current);
+    showcaseAnimationRef.current?.stop();
+    setIsTransitioning(true);
+    Animated.timing(screenOpacity, {
+      toValue: 0, duration: 650, easing: Easing.inOut(Easing.cubic), useNativeDriver: true,
+    }).start(({ finished }) => { if (finished && visibleRef.current) onCompleteRef.current(); });
   };
 
   const handleUserTap = () => {
@@ -907,7 +1017,8 @@ export function MagnetismIntroAnimation({
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
         }),
-      ]).start(() => {
+      ]).start(({ finished }) => {
+        if (!finished || closingRef.current || !visibleRef.current) return;
         setStageIdx(nextIdx);
         quoteTranslateY.setValue(12);
         Animated.parallel([
@@ -923,7 +1034,8 @@ export function MagnetismIntroAnimation({
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-        ]).start(() => {
+        ]).start(({ finished }) => {
+          if (!finished || closingRef.current || !visibleRef.current) return;
           setIsTransitioning(false);
         });
       });
@@ -952,7 +1064,8 @@ export function MagnetismIntroAnimation({
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
-      ]).start(() => {
+      ]).start(({ finished }) => {
+        if (!finished || closingRef.current || !visibleRef.current) return;
         solarClockValRef.current = 0;
         setSolarClock(0);
         setStageIdx(3);
@@ -988,7 +1101,8 @@ export function MagnetismIntroAnimation({
               useNativeDriver: true,
             }),
           ]),
-        ]).start(() => {
+        ]).start(({ finished }) => {
+          if (!finished || closingRef.current || !visibleRef.current) return;
           setIsTransitioning(false);
         });
       });
@@ -1011,7 +1125,8 @@ export function MagnetismIntroAnimation({
           useNativeDriver: true,
         }),
         Animated.delay(200),
-      ]).start(() => {
+      ]).start(({ finished }) => {
+        if (!finished || closingRef.current || !visibleRef.current) return;
         setStageIdx(4);
         Animated.parallel([
           Animated.timing(modernTextOpacity, {
@@ -1026,63 +1141,51 @@ export function MagnetismIntroAnimation({
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-        ]).start(() => {
-          setIsTransitioning(false);
+        ]).start(({ finished }) => {
+          if (!finished || closingRef.current || !visibleRef.current) return;
+          const sequenceVersion = sequenceVersionRef.current;
+          showcaseTimerRef.current = setTimeout(() => {
+            if (sequenceVersion === sequenceVersionRef.current) triggerDeviceShowcase(0);
+          }, SHOWCASE_PAUSE_MS);
         });
       });
       return;
     }
 
-    // Taps 5, 6, 7, 8: Showcase each of the 4 3D objects separately (Zoom in center -> Sparks -> Brownout -> Zoom out into square)
-    if (stageIdx >= 4 && stageIdx < 8) {
-      const nextDevIdx = stageIdx - 4; // 0 = Satellite, 1 = Car, 2 = Smartphone, 3 = Microprocessor
-      triggerDeviceShowcase(nextDevIdx, stageIdx + 1);
-      return;
-    }
-
-    // Final Tap (after the 4th 3D object — Microprocessor — has zoomed out into its square):
-    // Fade to black and enter the operational screen!
-    if (stageIdx === 8) {
-      setIsTransitioning(true);
-      Animated.sequence([
-        Animated.timing(screenOpacity, {
-          toValue: 0,
-          duration: 1000,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.delay(180),
-      ]).start(() => {
-        onCompleteRef.current();
-      });
-    }
+    // The four-object sequence advances itself; its final frame waits for the user.
+    if (stageIdx === 8) finishIntro();
   };
 
   if (!visible) return null;
 
+  // The final intro beat switches from the historical device story to actual
+  // current measurements and their independent public evidence sources.
+  if (stageIdx === 8 && !isTransitioning && showcaseElapsed >= SHOWCASE_DURATION_MS / 1000) {
+    return (
+      <Animated.View style={{ flex: 1, opacity: screenOpacity }}>
+        <CurrentMeasurementsPage
+          phonePoints={phonePoints}
+          phoneCurrentMicroT={phoneCurrentMicroT}
+          phoneDeltaNt={phoneDeltaNt}
+          isRecording={isRecording}
+          onEnter={finishIntro}
+        />
+      </Animated.View>
+    );
+  }
+
   const currentQuote = INITIAL_QUOTES[Math.min(2, stageIdx)];
   const isStormActive = stageIdx >= 3;
+  const expandedBackdropHeight = Math.min(390, Math.max(280, Math.round(windowHeight * 0.45)));
 
   // Determine bottom prompt text
   let bottomPromptText = 'Tap to continue';
   if (stageIdx === 4) {
-    bottomPromptText = 'Tap to explore risk (1/4: Satellite services) ›';
-  } else if (stageIdx === 5) {
-    bottomPromptText = isTransitioning
-      ? 'Illustrating possible satellite service disruption...'
-      : 'Tap for next risk (2/4: Navigation) ›';
-  } else if (stageIdx === 6) {
-    bottomPromptText = isTransitioning
-      ? 'Illustrating possible navigation disruption...'
-      : 'Tap for next risk (3/4: Communications) ›';
-  } else if (stageIdx === 7) {
-    bottomPromptText = isTransitioning
-      ? 'Illustrating possible communications disruption...'
-      : 'Tap for final risk (4/4: Power-dependent services) ›';
-  } else if (stageIdx === 8) {
-    bottomPromptText = isTransitioning
-      ? 'Illustrating dependence on reliable electric power...'
-      : 'Tap to enter AuroraSense ›';
+    bottomPromptText = 'Four connections. One shared dependency.';
+  } else if (stageIdx >= 5) {
+    bottomPromptText = stageIdx === 8 && !isTransitioning
+      ? 'Tap to enter AuroraSense ›'
+      : `${stageIdx - 4} / 4 · ${MODERN_DEVICES[stageIdx - 5].label}`;
   }
 
   return (
@@ -1096,7 +1199,9 @@ export function MagnetismIntroAnimation({
           <Animated.View
             style={[
               styles.visualViewport,
-              stageIdx >= 5 && { height: 158 },
+              // Give Carrington and the modern-device sequence the same scene
+              // height so the Sun/Earth composition holds its vertical anchor.
+              stageIdx >= 3 && { height: expandedBackdropHeight },
               {
                 opacity: backdropDimOpacity,
               },
@@ -1184,34 +1289,34 @@ export function MagnetismIntroAnimation({
                   <Text
                     style={[
                       styles.modernHeadline,
-                      stageIdx >= 5 && styles.modernHeadlineCompact,
+                      styles.modernHeadlineCompact,
                     ]}
                   >
-                    Severe space weather can disrupt services we depend on.
+                    Microelectronics connect our world.
                   </Text>
                   <Text
                     style={[
                       styles.modernSubheadline,
-                      stageIdx >= 5 && styles.modernSubheadlineCompact,
+                      styles.modernSubheadlineCompact,
                     ]}
                   >
-                    Power grids, satellites, radio and navigation can be affected.
+                    Satellites. Cars. Phones. All Processors.
                   </Text>
 
                   {/* INSIGHTFUL TEXT BELOW THE STATEMENT & ABOVE THE SQUARES */}
                   <View
                     style={[
                       styles.microprocessorInsightBox,
-                      stageIdx >= 5 && styles.microprocessorInsightBoxCompact,
+                      styles.microprocessorInsightBoxCompact,
                     ]}
                   >
                     <Text
                       style={[
                         styles.microprocessorInsightText,
-                        stageIdx >= 5 && styles.microprocessorInsightTextCompact,
+                        styles.microprocessorInsightTextCompact,
                       ]}
                     >
-                      Extreme geomagnetic storms can damage high-voltage transformers. Satellite and ionospheric disturbances can affect navigation and communications. These stylized effects illustrate service risks, not predicted damage to consumer devices.
+                      Severe space weather can disrupt the power, navigation and communications they depend on. Effects are illustrative; device damage is not universal.
                     </Text>
                   </View>
                 </Animated.View>
@@ -1237,23 +1342,23 @@ export function MagnetismIntroAnimation({
                     const activeDevIdx = stageIdx - 5;
                     if (idx > activeDevIdx) return null;
 
-                    const isCurrentlyShowcasing = idx === activeDevIdx && showcaseElapsed < 3.1;
+                    const isCurrentlyShowcasing = idx === activeDevIdx && showcaseElapsed < SHOWCASE_DURATION_MS / 1000;
 
                     let state: DeviceOverloadState = 'BLACKOUT';
-                    let stateElapsedSec = 2.4 + idx * 0.35;
-                    let effectiveClock = 3.2 + idx * 0.8;
+                    let stateElapsedSec = SHOWCASE_DURATION_MS / 1000 - 2.7;
+                    let effectiveClock = SHOWCASE_DURATION_MS / 1000;
 
                     if (isCurrentlyShowcasing) {
                       effectiveClock = deviceClock;
-                      if (showcaseElapsed < 0.58) {
+                      if (showcaseElapsed < 1.3) {
                         state = 'ONLINE';
                         stateElapsedSec = showcaseElapsed;
-                      } else if (showcaseElapsed < 1.78) {
+                      } else if (showcaseElapsed < 2.7) {
                         state = 'BROWNOUT';
-                        stateElapsedSec = showcaseElapsed - 0.58;
+                        stateElapsedSec = showcaseElapsed - 1.3;
                       } else {
                         state = 'BLACKOUT';
-                        stateElapsedSec = showcaseElapsed - 1.78;
+                        stateElapsedSec = showcaseElapsed - 2.7;
                       }
                     }
 
@@ -1315,7 +1420,7 @@ export function MagnetismIntroAnimation({
           <View style={styles.bottomFooter}>
             <Text style={[styles.tapPrompt, { fontSize: 10, marginBottom: 6 }]}
               onPress={(event) => { event.stopPropagation(); void Linking.openURL('https://www.spaceweather.gov/impacts'); }}>
-              Conceptual animation · not an event reconstruction. Source: NOAA impacts ↗
+              Illustrative effects · NOAA source ↗
             </Text>
             <View style={styles.dotsRow}>
               {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
@@ -1340,6 +1445,12 @@ export function MagnetismIntroAnimation({
             >
               {bottomPromptText}
             </Text>
+            {stageIdx >= 4 && isTransitioning && <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Skip intro and enter AuroraSense"
+              onPress={(event) => { event.stopPropagation(); finishIntro(); }}
+              style={styles.skipButton}
+            ><Text style={styles.skipText}>Skip intro</Text></Pressable>}
           </View>
         </Pressable>
       </Animated.View>
@@ -1371,17 +1482,36 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   sceneWrap: {
-    width: 340,
-    height: 240,
+    width: '100%',
+    height: '100%',
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  overlaySvg: {
+  matrixSvg: {
     position: 'absolute',
     top: 0,
+    right: 0,
+    bottom: 0,
     left: 0,
+    width: '100%',
+    height: '100%',
+  },
+  diagramSvg: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -170,
+    marginTop: -120,
+  },
+  overlaySvg: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
     width: 340,
     height: 240,
+    marginLeft: -170,
+    marginTop: -120,
   },
   narrativeContainer: {
     flex: 1,
@@ -1592,10 +1722,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(6, 12, 20, 0.96)',
   },
   insertLabel: {
-    fontSize: 8,
+    fontSize: 10,
     fontWeight: '800',
     color: 'rgba(255, 255, 255, 0.78)',
-    letterSpacing: 0.3,
+    letterSpacing: 0,
+    flexShrink: 1,
   },
   insertStatus: {
     fontSize: 8,
@@ -1604,6 +1735,16 @@ const styles = StyleSheet.create({
   bottomFooter: {
     alignItems: 'center',
     gap: 6,
+  },
+  skipButton: {
+    minHeight: 36,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
+  },
+  skipText: {
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 12,
+    textAlign: 'center',
   },
   dotsRow: {
     flexDirection: 'row',

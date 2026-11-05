@@ -622,3 +622,161 @@ Unresolved product gates: hosted Supabase Auth/RLS/private upload/delete and act
 - Mobile's old hardcoded “Connected” pill now opens “Muse Spark · Evidence.” Its drawer includes the same reviewed recorded-real-run artifact as the web, with expandable actual actions and blocked-delivery limitations; its synthetic workflow remains separate. No request is made by opening the artifact.
 - Final intro review preserved the animation while removing universal chip-destruction claims, invented damage costs/reconnection counts, unmeasured scenario telemetry and purported historical quotations. Labels now describe conceptual service disruption with primary [NOAA impacts](https://www.spaceweather.gov/impacts) and [space-weather explanation](https://www.noaa.gov/explainers/space-weather-storms-from-sun) links. This corrects the earlier November 2 progress description; the animations are not reconstructed measurements or damage forecasts.
 - Final post-correction checks passed: mobile typecheck, web/packages lint, production build, iOS export (909 modules, 2.9 MB) and Android export (908 modules, 2.9 MB), plus `git diff --check`. Browser reload confirmed corrected intro labels and fresh actual USGS readings. Final recorded-audit screenshot: `docs/screenshots/submission-demo-2026-11-04.png`. The web preview is running on loopback port 3000; phone LAN access requires the README's LAN-server setup.
+
+## Phone UX and automatic context — November 4, morning follow-up
+
+Implemented the owner's requested flow corrections without altering QC thresholds or presenting universal device damage as established physics.
+
+- Intro: exact labels **Satellites, Cars, Phones, All Processors**; automatic 4.3-second reveal/dock plus 1.2-second pause per object. Only the current mesh animates, completed meshes stay still, Skip remains available, and the final state waits for Enter. Replay/hide invalidates pending timers. Damage/service imagery remains conceptual; not every device containing microelectronics necessarily fails in a solar storm.
+- Detection: no persistent object catalog. An eligible salient unknown event alone opens the new-object naming path; recognized patterns show a single label and Confirm/Not this. Correction is disclosed on demand. A touch alone cannot trigger a detected-object card. The eligible pre-touch window stays frozen during labeling; no recognition accuracy claim was added.
+- Quiet-spot score: responsive centered native overlay, fitted 34px score and smaller denominator, no oversized `100/100` string inside the circle.
+- Automatic location: Expo foreground-only permission flow and browser geolocation; exact coordinates immediately coarsened to half-degree cells with explicit uncertainty. Only public station IDs are transmitted; no location is sent to Meta, logged or persisted. Permission denial retains global context. Current GPS never establishes an old imported recording's origin. New native recordings can use the current in-memory capture location, with bounded retention and delete/consent withdrawal cleanup.
+- Best supported reference: rank five verified USGS stations by proximity; bounded parallel probes prefer a fresh valid station and fall back to an alternate or explicitly stale verified snapshot. Unknown/future/malformed data cannot win. Coarse-location uncertainty is included in the distance gate. NOAA solar wind and modeled aurora remain distinct upstream/model context, not substitute ground magnetometry.
+- Source continuity: temporary NOAA acquisition failures retain prior validated products with original observation/validity/retrieval timestamps and provenance. No invented replacement values. The polar map now marks the selected reference rather than always showing BOU.
+- Connectivity: found the API listening on loopback only. Configured the public LAN API origin in ignored `apps/mobile/.env.local`, restarted this project's verified Expo process on its existing LAN port, and ran the web API on the LAN. No firewall rules, public hosting or account settings were changed. LAN HTTP checks from the computer succeeded: ranked five-station request selected fresh BSL with 181 rows; NOAA returned OVATION, solar wind and Kp with four source manifests. This verifies the LAN listener on the computer, not the physical phone's network path.
+
+Verification: **183 TypeScript tests across 19 files passed**, including four detection-policy tests, three coarse browser-location tests, five new reference selection/uncertainty tests and a retained-NOAA-timestamp test. Workspace/mobile typechecks and lint passed. Production build passed. iOS export passed (919 modules, 2.9 MB); Android export passed (918 modules, 2.9 MB). The 28 Python science tests passed earlier; scientific algorithms were not changed in this UX follow-up.
+
+Browser inspection: actual NOAA context remains visible without an available browser location fix, no mandatory region form, automatic fresh USGS reference. At a 390 × 844 viewport, content/scroll widths both measured 375 px; no horizontal document overflow. Screenshot: `docs/screenshots/automatic-context-phone-2026-11-04.png`.
+
+Remaining exact physical check: reload Expo Go, allow foreground location, replay the four-object finale, inspect quiet-score centering, introduce/remove a known object and confirm a later independent pattern. Verify actual GPS permission and LAN feed access on the iPhone; native bundles alone do not prove those behaviors.
+
+## Current-measurements intro finale — November 4, 2026
+
+Replaced the animated device grid on the final intro beat with four current evidence time series, keeping the earlier sequential 3D device story intact.
+
+- **Phone:** the existing foreground native magnetometer handler now retains at most 60 display points in App memory, sampled at 2 Hz. Each point carries native monotonic sensor time, app receipt UTC, device-frame magnitude in µT, and Δ|B| in nT from the local two-second baseline. The trace is unsaved; the UI labels preview vs active recording and does not claim a QC verdict for preview data.
+- **Upstream magnetic field:** `/api/noaa` data are displayed as NOAA IMF Bz in GSM nT with observation and retrieval times. It is labeled as upstream field data, not a ground magnetometer.
+- **Professional ground:** the existing bounded USGS lookup ranks supported stations using the on-device coarse region, sends only station IDs, and displays actual scalar F in nT, sample time, retrieval time, and the current station. The plot shows ΔF from its first visible sample. Provisional status is explicit.
+- **Forecast:** added `/api/kp-forecast` for NOAA's planetary-K forecast product, retaining NOAA's observed/estimated/predicted status and valid times. The issue time is marked unavailable because the product does not supply it. Kp is identified as a global index, not local optical probability.
+- Each source has its own scale, axis and freshness label. Missing points and long time gaps break lines; no values are substituted. This page does not claim correlation, local aurora probability, or that phone data improve forecasts.
+
+Verification for this increment: mobile TypeScript check passed; web TypeScript check passed; `npm test` passed **190 tests across 20 files**, including seven NOAA Kp forecast parser/API route cases; `npm run lint` passed with zero warnings; `npm run build` passed and lists `/api/kp-forecast`; iOS Expo export passed (**920 modules, 2.9 MB**) and Android Expo export passed (**919 modules, 2.9 MB**). The first iOS export attempt was blocked writing Hermes bytecode under the sandbox's protected Windows temp directory; rerunning with temporary files under ignored `node_modules/.cache/codex-expo-temp` passed. A local API request was denied by this shell's socket policy, so this increment has not verified a fresh runtime response from NOAA/USGS or the phone-to-LAN path. Expo reported port 8081 already in use, consistent with an existing Metro process, but no screenshot or physical-phone rendering was captured in this turn.
+
+Next exact action: reload the iPhone's Expo Go session, advance through the intro, and confirm the four live/empty-source states and scroll/Enter behavior at device size. If the public cards show “WAITING,” verify the phone can reach the configured LAN API origin and that the Next server is running; then record a fresh phone trace and confirm the app receipt UTC advances while the display remains foregrounded.
+
+## Aurora availability and fingerprint diagnostics — November 4, 2026
+
+The owner reported the mobile state **“Local aurora estimate unavailable”** and asked whether NOAA access was failing. Traced the status path through the mobile fetch, `/api/noaa`, NOAA source parser and deterministic location evaluator.
+
+- This title is the evaluator's local evidence state; it is not itself an API/access error. Local assessment requires an automatic current coarse location and a fresh NOAA OVATION cell no farther than 250 km. IMF Bz, plasma and Kp remain separate global/planetary context and cannot substitute for a location-matched aurora-model cell. If OVATION reports `MISSING` with “No grid cell within 250 km,” it is a model coverage limitation. “Florida room” was a room description, not evidence of the owner's geographic location; this turn did not inspect the phone's actual position or reproduce its exact cell distance.
+- The mobile panel already showed per-source status; it now also shows each source's specific reason. Stale observation, future time, distant local grid, and absent OVATION have differentiated descriptions. A fresh `NOAA IMF Bz`/`NOAA plasma`/`NOAA estimated Kp` row alongside a missing OVATION row demonstrates partial source access rather than a total NOAA outage.
+- Failed `/api/noaa` and professional-ground HTTP responses now preserve safe server error text in the mobile UI rather than collapsing all HTTP failures to a generic refresh message. NOAA's official public JSON directory currently lists `ovation_aurora_latest.json` and live space-weather products; this verifies that public products exist, not this specific phone-to-LAN request or uninterrupted service.
+- Fingerprint matching remains deterministic nearest-example feature comparison. Saving a user's label now reads back and validates the persisted profile before showing success. The UI surfaces matcher abstention reasons (invalid trace, no/invalid examples, same or overlapping window, context mismatch, cadence mismatch, signature mismatch, ambiguity). Thresholds remain frozen pending controlled household measurements. This is observability and persistence verification; no recognition-accuracy improvement is claimed.
+- Answered the recording comparison: the intro's phone trace is a rolling, unsaved 2 Hz display preview of at most 60 points. The recorder retains the longer foreground three-axis DEVICE-frame measurement with actual timing/cadence/gaps, motion/accelerometer context, markers and session metadata; it runs session QC and allows local export and later UTC comparison. The comparison page adds independently timestamped NOAA upstream, professional ground and Kp forecast feeds but does not save or replace a phone session.
+
+### Verification for this increment
+
+- `npm test`: **191 passed across 20 files**.
+- `npm run test:science`: **28 passed**.
+- `npm run typecheck --workspace @aurorasense/web`: passed.
+- `npm run typecheck --prefix apps/mobile`: passed. (`--workspace @aurorasense/mobile` is invalid because mobile is not a root npm workspace.)
+- `npm run lint`: passed with zero warnings.
+- `npm run build`: production Next.js build passed again after the final explanatory-status/error-message edits; routes include NOAA, Kp forecast and ground reference APIs.
+- `npx expo export --platform ios --output-dir dist-ios` from `apps/mobile`: passed, 920 modules, 2.9 MB. Android equivalent passed, 919 modules, 3 MB. An initial export launched from repo root failed because Expo resolved the app entry relative to the wrong directory; rerunning from the mobile app succeeded.
+- `git diff --check`: passed. No physical-device screenshot or fresh app-to-LAN/API response was captured in this increment. Earlier host-side NOAA and USGS verifications remain in the linked source-verification artifacts.
+
+### Next exact actions
+
+On the iPhone, refresh the Aurora panel and read the exact NOAA OVATION and upstream statuses; separately confirm the phone reaches the configured LAN service. If the OVATION detail says no cell within 250 km while other NOAA rows are fresh, treat that as coverage rather than a connectivity bug. For learning, keep the phone fixed and collect three independent repetitions per item/state at fixed distances, with a later held-out repeat; no threshold change until those trials are inspected.
+
+## Intro scene, live-source recovery and label-save repair — November 4, 2026
+
+Reviewed four owner screenshots. The device-story stage used a 158 px backdrop above a fixed 2×2 device grid, leaving an oversized black gap. The current-measurements screen showed `0 of 3 sources refreshed`, while direct source links opened. Confirming the phone's visible `Handling candidate` also produced a local-storage readback error.
+
+### Changes made
+
+- Expanded the modern-story Sun–Earth scene to roughly 45% of available phone height (clamped 280–390 px). Added a slow, structured 15×19 matrix particle field flowing left-to-right, narrowing near Earth and expanding into the magnetotail. The matrix continues while the more expensive field-line scene pauses. It remains explicitly illustrative.
+- Corrected the fingerprint persistence race: `File.write()` returns a Promise, but the prior handler immediately read the file synchronously without awaiting that write. It now uses `writeSync()` followed by immediate synchronous parse/validation. The hand-associated confirmation label now reads **Hand movement**; explanatory copy still says movement/touch can be confounded and does not identify tissue. Previously failed labels must be confirmed again after app reload.
+- Added per-endpoint diagnostics and a manual **Refresh NOAA and ground sources** button to the intro comparison page. HTTP responses preserve route error details; rejected network requests distinguish NOAA, USGS and Kp service failures. Previous valid samples remain in state on failed refresh and retain their original source times.
+- Confirmed the direct source links and app proxy are different paths. The app calls `/api/noaa`, `/api/ground`, and `/api/kp-forecast`; opening a NOAA source URL does not exercise these local web-server routes.
+
+### Runtime diagnosis and verification
+
+- Initially, the host browser showed a failed local API refresh; the phone screenshot likewise showed 0/3. The configured `EXPO_PUBLIC_API_URL` matched a current computer IPv4 address, but the host-side Next service was not listening. Started the existing Next dev app on the local network interface (no public deployment). The web dashboard's **Refresh NOAA** changed to **NOAA refreshed** with fresh OVATION valid time and fresh IMF/plasma timestamps.
+- Read-only checks against the configured API origin then returned: `/api/noaa` HTTP 200 (OVATION present, 120 upstream rows, 63 Kp samples, zero source errors); `/api/ground?stations=BOU` HTTP 200 (181 station samples, zero errors); `/api/kp-forecast` HTTP 200 (81 forecast points). These verify the computer's LAN endpoints, not the iPhone's HTTP path.
+- Metro port 8081 is already occupied. A new `expo start --lan --port 8081` invocation declined to start in noninteractive mode; the existing Metro process was left intact. Its association with this app and physical iPhone hot reload remain unverified. The owner needs to reload Expo Go, then use the new source-refresh button and confirm the hand pattern again.
+- `npm test`: **194 passed across 21 files**, including three new source-response diagnostics tests.
+- Web and mobile TypeScript checks passed; `npm run lint` passed; `git diff --check` passed.
+- iOS Expo export passed (**921 modules, 3 MB**); Android export passed (**920 modules, 3 MB**). No post-change native screenshot or physical storage-write confirmation was available.
+
+### Remaining exact action
+
+Reload the iPhone's Expo Go project. On the final intro screen tap **Refresh NOAA and ground sources** and confirm the NOAA, USGS and Kp charts receive source-timestamped data. In Ground Truth, confirm the hand-associated event again and verify the success status; then introduce/remove the same event and inspect matcher context feedback. If the cards still show a route error, capture the new `SOURCE REFRESH DETAILS` text. The local Next dev server is running for this test and should stay on the same reachable Wi-Fi network as the phone.
+
+## Annotated capture evidence analysis — November 4, 2026
+
+### What changed
+
+- Replaced the post-recording short summary with a capture-bound, annotated evidence analysis in Ground Truth. It reports the phone's DEVICE-frame X/Y/Z components with units, a baseline-relative multi-axis trace, QC-flag intervals, and timestamped screen-touch, motion and battery-state markers. Component summaries show usable and flagged counts and p95/peak departures where a valid per-axis baseline exists.
+- The page walks through six distinct questions: what the phone measured; whether local interference patterns are present; whether an Earth/regional response is supportable; what upstream NOAA solar-wind context overlaps; whether reconnection was directly observed; and whether there is any optical aurora evidence. State labels are explicit and the deterministic report cannot upgrade the verdict beyond descriptive comparison.
+- Added capture-window context cards/traces for upstream NOAA IMF Bz (GSM, spacecraft observation time), global Kp and NOAA OVATION's nearest coarse-region cell, each retaining source/valid/retrieval times where available. Phone/USGS points share a plot only when the existing comparison eligibility gate passes. Model activity is not described as visibility probability.
+- Recording now timestamps screen interactions (debounced) and reports whether QC flags occur near or away from those interactions; Expo battery state distinguishes CHARGING, FULL and UNPLUGGED. These are observational annotations, not causal assignments or new QC thresholds.
+- The screen prominently says `LOCAL DETERMINISTIC · MUSE SPARK NOT CALLED ON THIS SESSION`. The current capture is stored locally; `/api/recordings` remains blocked until authenticated private ingest is configured. Opening the separately recorded real Spark audit does not mean Spark inspected this capture. No raw session was uploaded for this report.
+- Updated README coverage and added five deterministic session-analysis tests. Fixtures are synthetic software fixtures; they do not count as phone measurements or empirically measured phone-noise samples.
+
+### Verification and limits
+
+- `npm test`: **199 tests passed across 22 files**.
+- `npm run test:science`: **28 tests passed**.
+- `npm run lint`: passed with zero warnings; `npm run typecheck --prefix apps/mobile` and `npm run typecheck --prefix apps/web`: passed.
+- iOS Expo export passed (**922 modules, 3 MB**); Android Expo export passed (**921 modules, 3 MB**). These are bundle/compile checks, not physical device behavior checks. `git diff --check` passed.
+- Desktop/phone visual inspection of the updated native capture screen and a post-change iPhone capture were not available in this increment. The screenshot supplied for this feature is the pre-record consent/record page and its displayed 46.8 µT is only a live preview, not a saved session. Therefore no per-capture analysis was produced from that image.
+- One phone plus same-region professional data can at most provide a descriptive, time-aligned comparison. Phone orientation, calibration/bias, sensor noise, motion, nearby devices and environmental fields remain competing explanations. A single session cannot establish regional disturbance, solar-wind causation, magnetopause/tail reconnection or visible aurora. The upstream context intentionally applies no propagation lag; NOAA OVATION is model context rather than observation.
+
+### Next exact physical-device action
+
+On the iPhone, reload the existing Expo Go app, complete an opted-in **10-minute** stationary recording (needed to attempt the existing 8-minute phone/reference overlap gate), keep the phone fixed, and note any charging change or nearby interference with the in-app marker. Stop in the foreground, open **View Evidence Analysis**, and capture the rendered page plus source timestamps/errors. Confirm the X/Y/Z units and event markers are readable, whether the NOAA and USGS traces loaded, and whether the comparison says descriptive or explains its gate failure. The screenshot/API build alone does not verify that interaction. Pair EZIE-Mag when it is later started; do not imply it has already been compared.
+- Follow-up final verification after this progress entry was drafted: `npm run build` passed (Next.js production build, including `/api/noaa`, `/api/ground`, `/api/kp-forecast`, `/api/meta` and `/api/recordings`). Updated README verification totals to this run: 199 TypeScript tests / 22 files, 28 Python tests, iOS 922 modules, Android 921 modules.
+
+## Aligned Carrington scene and label-free object guesses — November 4, 2026
+
+The owner asked to keep the Carrington planetary scene at the same vertical level as the following modern-device sequence and remove object labeling from the demo. The object response should feel playful while remaining honest when the pattern is unclear.
+
+- The intro now switches to its expanded Sun–Earth animation viewport at the Carrington stage as well as the later device stages. Both pages use the same scene height and top anchoring, preventing the scene from abruptly shifting down between those beats.
+- Removed the mobile name/save/confirm/correct flow and deleted its unused learning cards. The mobile app no longer loads old local fingerprint profiles; any old file is left on-device and ignored rather than automatically deleted.
+- The mobile and browser demo show one brief, ephemeral best guess, or **Magnetic mystery** when uncertain. They do not show a catalog of possible detections or persist an object identity. The guess is a deterministic local feature heuristic, not a Muse Spark call, trained neural model, calibrated probability, or verified device identification. Recognition accuracy remains unmeasured; one phone cannot reliably distinguish arbitrary household objects or establish that a pattern is geomagnetic.
+- Retained the shared nearest-example learning implementation as non-demo research code and tests; the demo does not load those profiles or expose that pathway.
+
+### Verification and limitations
+
+- `npm test`: **200 passed across 22 files**.
+- `npm run lint`: passed with zero warnings.
+- `npm run typecheck`: passed for web and packages; `npm run typecheck --prefix apps/mobile`: passed.
+- `npm run build`: production Next.js build passed.
+- iOS Expo export passed (**922 modules, 3 MB**); Android Expo export passed (**921 modules, 3 MB**).
+- `git diff --check`: passed. Python scientific code was unchanged, so the 28-test science suite was not rerun in this increment; its prior result is recorded above.
+- The phone's native UI was not visually inspected after the change. Bundle exports do not prove iPhone behavior, visual alignment, or actual object-recognition accuracy. No Spark call or physical measurement was made for these guesses.
+
+### Next exact on-device action
+
+Reload the iPhone project in Expo Go and move from the Carrington page into the modern object sequence; confirm the Sun–Earth composition stays at the same vertical anchor. Then keep the phone fixed, bring one known household item near it, and confirm there is a single tentative guess or **Magnetic mystery**, with no naming, confirmation, correction, or save prompt. Capture the on-device result if the layout or guess needs another pass.
+
+## Competition video script and narration — November 4, 2026
+
+Prepared a recording package at the owner's request without changing application code or the approved specifications:
+
+- `demo/recording/video-script-2026-11-04.md`: planned 2:55 cut, eight timed scenes, exact narration, screen actions, provenance captions, score card, recording alternatives and evidence links.
+- `demo/recording/voiceover-2026-11-04.txt`: clean ready-to-record narration, **351 words**; approximately 124 words/minute over the planned 2:50 spoken section, followed by five silent seconds.
+- `demo/recording/requirements-2026-11-04.md`: organizer-source checks, requirement-to-script mapping and explicitly unresolved portal requirements.
+
+Read `goal.md`, `assets.md`, and `plan.md` in full and inspected the approved wireframe. Reviewed current README/progress, physical-export reports, source/evaluation records and the redacted real Meta artifact; inspected actual dashboard screenshots. Independent read-only reviews checked scientific evidence and editorial/timing accuracy. The script uses the accepted October 31 acquisition and separate October 28 perturbation, original NASA submissions, live NOAA context, historical USGS, the genuine November 4 Spark run and honest retrospective scores. It preserves zero phone sessions in that model run, blocked delivery, zero invitations sent and deterministic INCONCLUSIVE. It does not portray the current capture analysis or heuristic object guess as model inference.
+
+Official event page was retrieved through web tools and confirms November 4 at 9 p.m. ET, the Indie Developer emphasis and Push the Frontier theme. Public participant-details extraction returned a loading shell. The three-minute/public-repository requirements are recorded from the supplied guide in the repository; exact current hosting/access/form requirements and final judging weights are not inferred. The requirements file separates direct official verification, supplied-guide evidence, project requirements and editing recommendations. Asked the owner for guide/form text if available; no answer was required to complete the grounded script.
+
+Actual verification: `Get-Content`/`rg` inspected the repository evidence; `view_image` inspected wireframe and real UI captures; a PowerShell consistency check passed for all eight script/voice-over paragraphs, the **351-word** count and every local Markdown link in the package. `git diff --check -- demo/recording docs/progress.md` passed (only the repository's LF/CRLF informational warning). No application tests/builds were rerun for this documentation-only work, and earlier test counts are not represented as new results.
+
+Remaining actions: record genuine footage and narration; check newest native screens on the physical phone before showing them; synchronize captions; measure the actual exported duration; check the authenticated competition form and logged-out video/repository access; publish/submit only through the owner's authorized workflow before 21:00 America/New_York. No audio file, encoded video, public deployment, upload, model call, participant message or submission was made by this task. Voice-over currently means ready-to-record text; final timing is planned, not measured audio duration.
+
+Final access-check addendum: waiver extraction returned an empty shell and the submission URL returned the public overview. Browser fallback reported local browser use disabled in Work settings. A direct official-page fetch failed sandbox DNS; its escalation request was canceled without retrieving content. No final rubric weights or hosting requirements were verified, and third-party weights were excluded. Added a dated pointer in the older recording runbook so its superseded pending-phone/pending-model rows are not mistaken for current status. Final narration review found no major claim/timing defect and changed the audit caption to “6 audited tool actions” to preserve the blocked-action distinction.
+
+## Final GitHub source package — November 4, 2026
+
+The owner explicitly authorized uploading the final version to GitHub and refreshing the README. Verified the configured destination as the already-public `kkrat0s/aurorai`, default branch `main`; a fetch found local HEAD and remote main identical before the release changes (base `aedbf57`). No website deployment or competition-form submission is part of this upload.
+
+- Refreshed the README with repository/clone instructions, the aligned intro, current phone/NOAA/USGS/Kp streams, automatic coarse location, annotated capture analysis, removal of object labeling, actual model/runtime boundaries, measured results and the final 2:55 recording package. Updated the contribution record to remove superseded learning-UI and unpublished-history descriptions.
+- Release checks rerun successfully: `npm test` **200 tests / 22 files**; `npm run test:science` **28 tests**; root and mobile TypeScript checks; lint with zero warnings; production Next.js build. Earlier successful iOS/Android bundle exports remain documented above; no new hardware verification is implied.
+- Inspected the 198 tracked/candidate files for configured secret values and common credential/private-key patterns without printing credentials: **zero matches**. Verified `.env.local` and the supplied raw phone exports remain ignored. Checked five README/contribution/recording Markdown files: **zero broken local links**. Visually inspected the new automatic-context screenshot; it contains no precise location.
+- Found an MP4 already tracked in older commit `c5db4cb`, despite the current ignore rule. Removed it from the current Git index with `git rm --cached` and preserved the local file. This excludes it from the new source tree but does **not** erase older Git history; no history rewrite was performed.
+
+Next release action: commit this reviewed source package, push `main` to the configured origin, verify the remote commit, and inspect the resulting GitHub Actions status. Remaining competition actions are the physical-phone visual check, final video upload/access review and participant-portal submission. The central regional-phone hypothesis, object-recognition accuracy, calibrated optical probability, hosted private ingest/RLS and EZIE-Mag comparison remain unverified as detailed above.

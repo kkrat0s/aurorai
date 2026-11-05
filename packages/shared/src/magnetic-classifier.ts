@@ -26,7 +26,7 @@ export const GRANITE_WINDOWSILL_PHYSICS={
 };
 function metadata(id:DisturbanceClassId,name:string,shortLabel:string,color:string,icon:string,mechanism:string):DisturbanceClassMetadata {
   return {id,name,shortLabel,color,icon,typicalDeltaMicroT:null,typicalDeltaNanoT:null,rateOfChangeRangeMicroTPerSec:null,primaryMechanism:mechanism,
-    howAiGuesses:'Bounded local feature comparison and optional user-labeled examples. Similar waveforms can have different causes; the match score is not a calibrated probability.',
+    howAiGuesses:'A deterministic local heuristic reads amplitude, rate, axis variation and recorded motion/power context. Similar waveforms can have different causes; output is not a calibrated probability.',
     physicsExplanation:mechanism,
     solarStormComparison:'No fixed local amplitude maps to a NOAA G level. A single phone cannot identify a storm or magnetic reconnection.',
     mitigationAdvice:'Repeat a controlled present/absent comparison with a stationary phone; retain raw data, context and an independent holdout recording.'};
@@ -34,13 +34,35 @@ function metadata(id:DisturbanceClassId,name:string,shortLabel:string,color:stri
 export const UNIVERSAL_FINGERPRINT_DATABASE:Record<DisturbanceClassId,DisturbanceClassMetadata>={
   CLEAN_GEOMAGNETIC_BASELINE:metadata('CLEAN_GEOMAGNETIC_BASELINE','Quiet local trace','Quiet trace','#68edc3','🌍','Little variation relative to the selected baseline. A stable local magnetic offset can still be present.'),
   GEOMAGNETIC_SOLAR_DISTURBANCE:metadata('GEOMAGNETIC_SOLAR_DISTURBANCE','Regional evidence required','Unverified regional cause','#00e5ff','☀️','This local pattern matcher cannot classify geomagnetic origin. Use synchronized professional and independent-site evidence.'),
-  HUMAN_HAND_GESTURE:metadata('HUMAN_HAND_GESTURE','Handling-associated variation','Handling candidate','#ffd58c','🖐️','Touch/motion can coincide with orientation changes, accessories or nearby magnetic objects. These samples do not identify tissue diamagnetism.'),
+  HUMAN_HAND_GESTURE:metadata('HUMAN_HAND_GESTURE','Handling-associated variation','Hand movement','#ffd58c','🖐️','Touch/motion can coincide with orientation changes, accessories or nearby magnetic objects. These samples do not identify tissue diamagnetism.'),
   SMARTWATCH_OR_MAGNET:metadata('SMARTWATCH_OR_MAGNET','Nearby magnetic object candidate','Magnetic object','#f06292','⌚','A steep local gradient can be compatible with a nearby magnet or magnetized object; waveform alone cannot identify its make or type.'),
   CHARGING_CABLE_INDUCTION:metadata('CHARGING_CABLE_INDUCTION','Charging-associated variation','Charging candidate','#ffb74d','🔌','Charging state is contextual evidence, not proof that a cable caused the field. A controlled charging on/off comparison is required.'),
-  LAPTOP_OR_COMPUTER:metadata('LAPTOP_OR_COMPUTER','User-labeled electronic object','Electronic object','#ba68c8','💻','Nearby electronics may contribute magnetic interference. Low-rate phone samples cannot resolve or identify a switching regulator from apparent jitter.'),
-  STRUCTURAL_METALLIC_MASS:metadata('STRUCTURAL_METALLIC_MASS','User-labeled structural object','Structural object','#80cbc4','🏢','Magnetized structural material can affect local fields. A steady offset alone does not identify steel or the supporting surface.'),
-  UNKNOWN_UNCLASSIFIED:metadata('UNKNOWN_UNCLASSIFIED','Unknown or ambiguous local source','Unknown source','#aeb9c8','❔','The available measurements do not uniquely identify a physical source. Record and label a controlled new example rather than forcing a known category.'),
+  LAPTOP_OR_COMPUTER:metadata('LAPTOP_OR_COMPUTER','Nearby electronic device candidate','Electronic device','#ba68c8','💻','Nearby electronics may contribute magnetic interference. Low-rate phone samples cannot resolve or identify a switching regulator from apparent jitter.'),
+  STRUCTURAL_METALLIC_MASS:metadata('STRUCTURAL_METALLIC_MASS','Nearby material candidate','Nearby material','#80cbc4','🏢','Magnetized structural material can affect local fields. A steady offset alone does not identify steel or the supporting surface.'),
+  UNKNOWN_UNCLASSIFIED:metadata('UNKNOWN_UNCLASSIFIED','Unknown or ambiguous local source','Unknown source','#aeb9c8','❔','The available measurements do not uniquely identify a physical source. Report unknown rather than forcing a known category.'),
 };
+export interface MagneticGuessCopy { headline: string; playfulLine: string }
+/** Human-readable local pattern-classifier output; a tentative guess, never an identity claim. */
+export function magneticGuessCopy(classId: DisturbanceClassId): MagneticGuessCopy {
+  switch (classId) {
+    case 'HUMAN_HAND_GESTURE':
+      return { headline: 'Maybe a hand or movement', playfulLine: 'My tiny magnetic detective saw motion. It cannot identify a person or body part.' };
+    case 'LAPTOP_OR_COMPUTER':
+      return { headline: 'Maybe a nearby computer', playfulLine: 'Laptop-shaped clue? A charger or another nearby field could fool me.' };
+    case 'CHARGING_CABLE_INDUCTION':
+      return { headline: 'The charger is a suspect', playfulLine: 'It looks suspiciously magnetic. Try the same setup unplugged and see if I change my mind.' };
+    case 'SMARTWATCH_OR_MAGNET':
+      return { headline: 'Maybe a watch or magnet', playfulLine: 'Something small and magnetic just entered the plot. I cannot tell which object it is.' };
+    case 'STRUCTURAL_METALLIC_MASS':
+      return { headline: 'Maybe nearby metal', playfulLine: 'A strong neighbor is affecting the reading; this phone cannot identify the material.' };
+    case 'UNKNOWN_UNCLASSIFIED':
+      return { headline: 'Magnetic mystery', playfulLine: 'I found a pattern, but I am stumped. Even a good guesser needs to know when to say “not sure.”' };
+    case 'GEOMAGNETIC_SOLAR_DISTURBANCE':
+      return { headline: 'Possible broad field change', playfulLine: 'This one needs independent ground stations and time alignment before I blame space weather.' };
+    case 'CLEAN_GEOMAGNETIC_BASELINE':
+      return { headline: 'Quiet-looking window', playfulLine: 'Quiet is not the same as calibrated, interference-free, or identified.' };
+  }
+}
 export interface MagneticSample {x:number;y:number;z:number;timestampMs:number}
 export interface DisturbanceSignature {
   deltaMicroT:number;deltaNanoT:number;peakDeltaMicroT:number;rateOfChangeMicroTPerSec:number;polarizationRatio:number;
@@ -61,6 +83,12 @@ export interface DevicePhysicalContext {
   sampleKind?:'MEASURED'|'SYNTHETIC';
 }
 export interface LearningMatch {profileId:string;label:string;distance:number;independentExamples:number;validation:'UNVALIDATED_USER_LABEL'}
+export type LearningMatchReason='NO_SAVED_EXAMPLES'|'NO_VALID_EXAMPLES'|'CURRENT_WINDOW_INVALID'|'SAME_OR_OVERLAPPING_WINDOW'|'CONTEXT_MISMATCH'|'CADENCE_MISMATCH'|'SIGNATURE_MISMATCH'|'AMBIGUOUS'|'MATCH';
+export interface LearningMatchDiagnostics {
+  reason:LearningMatchReason;profileCount:number;validProfileCount:number;overlappingCount:number;contextMismatchCount:number;
+  cadenceMismatchCount:number;signatureMismatchCount:number;ambiguousCandidateCount:number;nearestDistance:number|null;
+  contextDifferences:Array<'DEVICE_MODEL'|'DATA_KIND'|'MOTION'|'SCREEN_TOUCH'|'POWER_STATE'>;
+}
 export interface DisturbanceClassificationResult {
   predictedClass:DisturbanceClassId;
   /** Compatibility field: uncalibrated match score, never posterior probability. */
@@ -68,7 +96,7 @@ export interface DisturbanceClassificationResult {
   /** Compatibility field: amplitude / 100 nT reference, not storm severity. */
   solarStormSignalRatio:number;fingerprintHash:string;aiReasoning:string;context?:DevicePhysicalContext;
   protocolVersion:string;confidenceKind:'UNCALIBRATED_MATCH_SCORE';evidenceStatus:'INSUFFICIENT_DATA'|'HEURISTIC_ONLY'|'USER_LABELED_MATCH'|'UNKNOWN';
-  qualityIssues:string[];learningMatch:LearningMatch|null;trainable:boolean;
+  qualityIssues:string[];learningMatch:LearningMatch|null;learningDiagnostics:LearningMatchDiagnostics;trainable:boolean;
   windowStartMs:number|null;windowEndMs:number|null;sourceWindowId:string;
 }
 export interface LearnedUserFingerprint {
@@ -128,41 +156,56 @@ function validProfile(fp:LearnedUserFingerprint):boolean {
     fp.signature.durationMs>=FINGERPRINT_POLICY.minDurationMs&&fp.signature.peakDeltaMicroT>=0&&fp.signature.rateOfChangeMicroTPerSec>=0&&
     [fp.signature.polarizationRatio,fp.signature.jitterRatio,fp.signature.steadinessRatio].every(v=>v>=0&&v<=1);
 }
-function compatibleContext(a:DevicePhysicalContext|undefined,b:DevicePhysicalContext):boolean {
-  if((a?.sensorDeviceKey??'local-unverified')!==(b.sensorDeviceKey??'local-unverified'))return false;
-  if((a?.sampleKind??'MEASURED')!==(b.sampleKind??'MEASURED'))return false;
-  if(a?.motionState!==b.motionState||a?.isScreenTouched!==b.isScreenTouched)return false;
-  if(a?.batteryState!==b.batteryState)return false;
-  return true;
+function contextDifferences(a:DevicePhysicalContext|undefined,b:DevicePhysicalContext):LearningMatchDiagnostics['contextDifferences'] {
+  const differences:LearningMatchDiagnostics['contextDifferences']=[];
+  if((a?.sensorDeviceKey??'local-unverified')!==(b.sensorDeviceKey??'local-unverified'))differences.push('DEVICE_MODEL');
+  if((a?.sampleKind??'MEASURED')!==(b.sampleKind??'MEASURED'))differences.push('DATA_KIND');
+  if(a?.motionState!==b.motionState)differences.push('MOTION');
+  if(a?.isScreenTouched!==b.isScreenTouched)differences.push('SCREEN_TOUCH');
+  if(a?.batteryState!==b.batteryState)differences.push('POWER_STATE');
+  return differences;
 }
-function findLearnedMatch(sig:DisturbanceSignature,start:number,end:number,sourceWindowId:string,profiles:LearnedUserFingerprint[],context:DevicePhysicalContext):{match:LearningMatch;classId:DisturbanceClassId}|null {
+function findLearnedMatch(sig:DisturbanceSignature,start:number,end:number,sourceWindowId:string,profiles:LearnedUserFingerprint[],context:DevicePhysicalContext):{match:LearningMatch|null;classId:DisturbanceClassId|null;diagnostics:LearningMatchDiagnostics} {
+  const diagnostics:LearningMatchDiagnostics={reason:profiles.length?'NO_VALID_EXAMPLES':'NO_SAVED_EXAMPLES',profileCount:profiles.length,validProfileCount:0,overlappingCount:0,contextMismatchCount:0,cadenceMismatchCount:0,signatureMismatchCount:0,ambiguousCandidateCount:0,nearestDistance:null,contextDifferences:[]};
   const seen=new Set<string>();const candidates:Array<{fp:LearnedUserFingerprint;distance:number;label:string}>=[];
   for(const fp of profiles.slice(0,FINGERPRINT_POLICY.maxProfiles)){
     if(!validProfile(fp))continue;
+    diagnostics.validProfileCount++;
     const duplicateKey=`${fp.sourceWindowId}:${fp.objectClassId}:${(fp.customLabel??'').toLowerCase()}`;
     if(seen.has(duplicateKey))continue;seen.add(duplicateKey);
     // Training-window reuse and overlapping rolling windows are not independent tests.
     const sameClock=!fp.context?.acquisitionRunId||!context.acquisitionRunId||fp.context.acquisitionRunId===context.acquisitionRunId;
-    if(fp.sourceWindowId===sourceWindowId||(sameClock&&!(end<fp.windowStartMs!||start>fp.windowEndMs!)))continue;
-    if(!compatibleContext(fp.context,context))continue;
+    if(fp.sourceWindowId===sourceWindowId||(sameClock&&!(end<fp.windowStartMs!||start>fp.windowEndMs!))){diagnostics.overlappingCount++;continue;}
+    const differences=contextDifferences(fp.context,context);
+    if(differences.length){diagnostics.contextMismatchCount++;diagnostics.contextDifferences=[...new Set([...diagnostics.contextDifferences,...differences])];continue;}
     const cadence=sig.actualHz??0,profileCadence=fp.signature.actualHz??0;
-    if(!cadence||!profileCadence||cadence/profileCadence<.5||cadence/profileCadence>2)continue;
+    if(!cadence||!profileCadence||cadence/profileCadence<.5||cadence/profileCadence>2){diagnostics.cadenceMismatchCount++;continue;}
     const distance=featureDistance(sig,fp.signature);
-    if(distance>FINGERPRINT_POLICY.maxMatchDistance)continue;
+    diagnostics.nearestDistance=diagnostics.nearestDistance===null?distance:Math.min(diagnostics.nearestDistance,distance);
+    if(distance>FINGERPRINT_POLICY.maxMatchDistance){diagnostics.signatureMismatchCount++;continue;}
     const label=(fp.customLabel??UNIVERSAL_FINGERPRINT_DATABASE[fp.objectClassId].name).trim().slice(0,80);
     candidates.push({fp,distance,label});
   }
-  candidates.sort((a,b)=>a.distance-b.distance||a.fp.id.localeCompare(b.fp.id));const best=candidates[0];if(!best)return null;
+  if(!candidates.length){
+    diagnostics.reason=diagnostics.validProfileCount===0?'NO_VALID_EXAMPLES'
+      :diagnostics.overlappingCount===diagnostics.validProfileCount?'SAME_OR_OVERLAPPING_WINDOW'
+        :diagnostics.contextMismatchCount?'CONTEXT_MISMATCH'
+          :diagnostics.cadenceMismatchCount?'CADENCE_MISMATCH'
+            :diagnostics.signatureMismatchCount?'SIGNATURE_MISMATCH':'NO_VALID_EXAMPLES';
+    return{match:null,classId:null,diagnostics};
+  }
+  candidates.sort((a,b)=>a.distance-b.distance||a.fp.id.localeCompare(b.fp.id));const best=candidates[0];
   const key=(c:{fp:LearnedUserFingerprint;label:string})=>`${c.fp.objectClassId}:${c.label.toLocaleLowerCase()}`;
   const different=candidates.find(c=>key(c)!==key(best));
-  if(different&&different.distance-best.distance<FINGERPRINT_POLICY.ambiguityMargin)return null;
+  if(different&&different.distance-best.distance<FINGERPRINT_POLICY.ambiguityMargin){diagnostics.reason='AMBIGUOUS';diagnostics.ambiguousCandidateCount=candidates.filter(c=>key(c)!==key(best)&&c.distance-best.distance<FINGERPRINT_POLICY.ambiguityMargin).length;return{match:null,classId:null,diagnostics};}
   // Count non-overlapping examples only; repeated taps and shifted buffers add no support.
   const lastEndByRun=new Map<string,number>();let independent=0;
   for(const c of candidates.filter(c=>key(c)===key(best)).sort((a,b)=>a.fp.windowStartMs!-b.fp.windowStartMs!)){
     const run=c.fp.context?.acquisitionRunId??'legacy-clock';const lastEnd=lastEndByRun.get(run)??-Infinity;
     if(c.fp.windowStartMs!>lastEnd){independent++;lastEndByRun.set(run,c.fp.windowEndMs!);}
   }
-  return{classId:best.fp.objectClassId,match:{profileId:best.fp.id,label:best.label,distance:best.distance,independentExamples:independent,validation:'UNVALIDATED_USER_LABEL'}};
+  diagnostics.reason='MATCH';
+  return{classId:best.fp.objectClassId,match:{profileId:best.fp.id,label:best.label,distance:best.distance,independentExamples:independent,validation:'UNVALIDATED_USER_LABEL'},diagnostics};
 }
 export function classifyMagneticDisturbance(samples:MagneticSample[],baselineMagMicroT:number,userLearnedFingerprints:LearnedUserFingerprint[]=[],context?:Partial<DevicePhysicalContext>):DisturbanceClassificationResult {
   const fullContext:DevicePhysicalContext={isStandstill:context?.isStandstill===true,motionState:context?.motionState??'UNKNOWN',isScreenTouched:context?.isScreenTouched===true,
@@ -171,12 +214,14 @@ export function classifyMagneticDisturbance(samples:MagneticSample[],baselineMag
   let signature=emptySignature();try{signature=extractDisturbanceSignature(samples,baselineMagMicroT);}catch{/* Invalid input is explicitly ineligible below. */}
   const sourceWindowId=`window-${hash(JSON.stringify({run:fullContext.acquisitionRunId??'legacy-clock',samples}))}`;const scores=Object.fromEntries(Object.keys(UNIVERSAL_FINGERPRINT_DATABASE).map(k=>[k,0])) as Record<DisturbanceClassId,number>;
   let predictedClass:DisturbanceClassId='UNKNOWN_UNCLASSIFIED',evidenceStatus:DisturbanceClassificationResult['evidenceStatus']='UNKNOWN',confidence=0,learningMatch:LearningMatch|null=null;
+  let learningDiagnostics:LearningMatchDiagnostics={reason:qualityIssues.length?'CURRENT_WINDOW_INVALID':userLearnedFingerprints.length?'NO_VALID_EXAMPLES':'NO_SAVED_EXAMPLES',profileCount:userLearnedFingerprints.length,validProfileCount:0,overlappingCount:0,contextMismatchCount:0,cadenceMismatchCount:0,signatureMismatchCount:0,ambiguousCandidateCount:0,nearestDistance:null,contextDifferences:[]};
   let aiReasoning='The local source is unknown. Similar magnetic patterns can arise from drift, motion, nearby objects or geomagnetic variation; this phone alone cannot distinguish them.';
   const {peakDeltaMicroT:peak,rateOfChangeMicroTPerSec:rate,jitterRatio:jitter}=signature;
-  if(qualityIssues.length){evidenceStatus='INSUFFICIENT_DATA';aiReasoning=`Insufficient or invalid acquisition: ${qualityIssues.join(', ')}. Collect a continuous finite window before labeling a pattern.`;}
+  if(qualityIssues.length){evidenceStatus='INSUFFICIENT_DATA';aiReasoning=`Insufficient or invalid acquisition: ${qualityIssues.join(', ')}. Collect a continuous finite window before attempting a source guess.`;}
   else{
     const found=findLearnedMatch(signature,samples[0].timestampMs,samples.at(-1)!.timestampMs,sourceWindowId,userLearnedFingerprints,fullContext);
-    if(found){predictedClass=found.classId;learningMatch=found.match;confidence=Math.max(0,1-found.match.distance/FINGERPRINT_POLICY.maxMatchDistance);evidenceStatus='USER_LABELED_MATCH';
+    learningDiagnostics=found.diagnostics;
+    if(found.match&&found.classId){predictedClass=found.classId;learningMatch=found.match;confidence=Math.max(0,1-found.match.distance/FINGERPRINT_POLICY.maxMatchDistance);evidenceStatus='USER_LABELED_MATCH';
       aiReasoning=`Resembles your label “${found.match.label}” from ${found.match.independentExamples} separate recording window(s), with matching recorded context. This is an unvalidated local example match, not verified object identity or measured accuracy.`;
     }else{
       if(peak<.2&&rate<.4&&fullContext.motionState==='STANDSTILL'&&!fullContext.isScreenTouched){predictedClass='CLEAN_GEOMAGNETIC_BASELINE';confidence=.65;aiReasoning=`Small local variation (${Math.round(peak*1000)} nT) in this window. Quiet does not establish calibration, absence of interference or geomagnetic origin.`;}
@@ -190,11 +235,11 @@ export function classifyMagneticDisturbance(samples:MagneticSample[],baselineMag
   // Keep raw features and screening outcomes; a touch overlapping this window only blocks teaching.
   const touchAge=fullContext.timeSinceLastTouchMs;
   const recentTouch=fullContext.isScreenTouched||(typeof touchAge==='number'&&Number.isFinite(touchAge)&&touchAge>=0&&touchAge<=signature.durationMs);
-  if(recentTouch){qualityIssues.push('RECENT_SCREEN_TOUCH');aiReasoning+=' Teaching is paused until the rolling window no longer overlaps the recorded screen interaction.';}
+  if(recentTouch){qualityIssues.push('RECENT_SCREEN_TOUCH');aiReasoning+=' This guess is deferred while the rolling window overlaps a recorded screen interaction.';}
   const meta=learningMatch?{...UNIVERSAL_FINGERPRINT_DATABASE[predictedClass],name:`User label: ${learningMatch.label}`,shortLabel:learningMatch.label}:UNIVERSAL_FINGERPRINT_DATABASE[predictedClass];
   return{predictedClass,confidence,scores,metadata:meta,signature,solarStormSignalRatio:signature.peakDeltaMicroT/.1,
     fingerprintHash:`fp-${hash(JSON.stringify(featureVector(signature)))}`,aiReasoning,context:fullContext,protocolVersion:FINGERPRINT_PROTOCOL_VERSION,
-    confidenceKind:'UNCALIBRATED_MATCH_SCORE',evidenceStatus,qualityIssues,learningMatch,trainable:qualityIssues.length===0,
+    confidenceKind:'UNCALIBRATED_MATCH_SCORE',evidenceStatus,qualityIssues,learningMatch,learningDiagnostics,trainable:qualityIssues.length===0,
     windowStartMs:samples.length&&Number.isFinite(samples[0].timestampMs)?samples[0].timestampMs:null,
     windowEndMs:samples.length&&Number.isFinite(samples.at(-1)!.timestampMs)?samples.at(-1)!.timestampMs:null,sourceWindowId};
 }

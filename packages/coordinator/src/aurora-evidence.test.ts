@@ -47,6 +47,14 @@ describe('versioned local aurora evidence',()=>{
   it('does not infer local activity when the nearest grid cell is too far away',()=>{
     const result=evaluateAuroraAlertDecision({...base(),ovation:{...ovation(),coordinates:[[10,70,100]]}});
     expect(result.localOvationActivity).toBeNull();expect(result.sourceStatus[0].status).toBe('MISSING');
+    expect(result.sourceStatus[0].detail).toContain('No grid cell within 250 km');expect(result.summary).toContain('outside the supported local-cell coverage');
+  });
+  it('distinguishes missing local grid coverage from accessible fresh upstream NOAA context',()=>{
+    const result=evaluateAuroraAlertDecision({...base(),ovation:null,solarWind:wind([{observedAtUtc:time(-2),bzNt:-2,speedKmS:400,densityCm3:4}])});
+    expect(result.alertLevel).toBe('INSUFFICIENT_DATA');expect(result.localOvationActivity).toBeNull();
+    expect(result.sourceStatus.find(source=>source.source==='NOAA IMF Bz')?.status).toBe('FRESH');
+    expect(result.summary).toContain('Fresh global context remains available from NOAA IMF Bz, NOAA plasma');
+    expect(result.summary).toContain('cannot replace a location-matched aurora-model cell');
   });
   it('does not treat stale cloud data as clear or use it to alter a current estimate',()=>{
     const old=evaluateAuroraAlertDecision({...base(),userLocation:{...base().userLocation,cloudFraction:1,cloudObservedAtUtc:time(-120)}});

@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import {
   type DisturbanceClassificationResult,
-  type LearnedUserFingerprint,
 } from '@aurorasense/shared/magnetic-classifier';
 import { type PrescriptiveSessionReport } from '@aurorasense/shared/prescriptive-evaluator';
 import { type SensorQcResult, type SensorSession } from '@aurorasense/shared/sensor';
@@ -54,8 +53,6 @@ interface GroundTruthScreenProps {
   statusMessage: string;
   currentStep: number;
   onSelectStep: (step: number) => void;
-  userFingerprints?: LearnedUserFingerprint[];
-  onAddFingerprint?: (fp: LearnedUserFingerprint) => void;
 }
 
 const colors = {
@@ -112,8 +109,6 @@ export function GroundTruthScreen({
   statusMessage,
   currentStep,
   onSelectStep,
-  userFingerprints,
-  onAddFingerprint,
 }: GroundTruthScreenProps) {
   const [viewMode, setViewMode] = useState<'wireframe' | 'journey'>('journey');
   const [activeSubTab, setActiveSubTab] = useState<'My Sensor' | 'Nearby Devices' | 'Reference Station'>('My Sensor');
@@ -147,7 +142,6 @@ export function GroundTruthScreen({
           isCharging={isCharging}
           session={session}
           qc={qc}
-          prescriptiveReport={prescriptiveReport}
           soundMuted={soundMuted}
           onToggleSound={onToggleSound}
           onCalibrate={onCalibrate}
@@ -168,8 +162,6 @@ export function GroundTruthScreen({
           onUploadToDatabase={onUploadDatabase}
           uploadStatus={uploadStatus}
           isUploading={isUploading}
-          userFingerprints={userFingerprints}
-          onAddFingerprint={onAddFingerprint}
         />
       </View>
     );

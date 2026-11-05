@@ -15,20 +15,20 @@ describe('bounded local fingerprint learning',()=>{
   expect(fp.learningEligible).toBe(true);expect(r.evidenceStatus).toBe('USER_LABELED_MATCH');expect(r.learningMatch?.label).toBe('Desk fan');expect(r.metadata.name).toBe('User label: Desk fan');expect(r.learningMatch?.validation).toBe('UNVALIDATED_USER_LABEL');expect(r.confidenceKind).toBe('UNCALIBRATED_MATCH_SCORE');
  });
  it('excludes identical training data and overlapping windows from learning evidence',()=>{
-  const fp=learn();for(const start of [0,100,2400])expect(classifyMagneticDisturbance(trace(start),50,[fp],context).learningMatch).toBeNull();
+  const fp=learn();for(const start of [0,100,2400]){const result=classifyMagneticDisturbance(trace(start),50,[fp],context);expect(result.learningMatch).toBeNull();expect(result.learningDiagnostics.reason).toBe('SAME_OR_OVERLAPPING_WINDOW');}
  });
  it('rejects ambiguous and contradictory user labels, including labels for the same training window',()=>{
-  for(const profiles of [[learn('Fan'),learn('Charger',5000)],[learn('Fan'),learn('Charger')]])expect(classifyMagneticDisturbance(trace(15000),50,profiles,context).learningMatch).toBeNull();
+  for(const profiles of [[learn('Fan'),learn('Charger',5000)],[learn('Fan'),learn('Charger')]]){const result=classifyMagneticDisturbance(trace(15000),50,profiles,context);expect(result.learningMatch).toBeNull();expect(result.learningDiagnostics.reason).toBe('AMBIGUOUS');}
  });
  it('does not inflate support with repeated taps or shifted overlapping buffers',()=>{
   const fp=learn();const r=classifyMagneticDisturbance(trace(15000),50,[fp,fp,learn('Desk fan',100),learn('Desk fan',5000)],context);expect(r.learningMatch?.independentExamples).toBe(2);
  });
  it('does not transfer fingerprints across phones, measured/synthetic domains, motion or charging context',()=>{
-  const fp=learn();for(const change of [{sensorDeviceKey:'other'},{sampleKind:'MEASURED' as const},{motionState:'ACTIVE_MOTION' as const},{batteryState:'CHARGING' as const}])expect(classifyMagneticDisturbance(trace(15000),50,[fp],{...context,...change}).learningMatch).toBeNull();
+  const fp=learn();for(const change of [{sensorDeviceKey:'other'},{sampleKind:'MEASURED' as const},{motionState:'ACTIVE_MOTION' as const},{batteryState:'CHARGING' as const}]){const result=classifyMagneticDisturbance(trace(15000),50,[fp],{...context,...change});expect(result.learningMatch).toBeNull();expect(result.learningDiagnostics.reason).toBe('CONTEXT_MISMATCH');expect(result.learningDiagnostics.contextDifferences.length).toBeGreaterThan(0);}
  });
  it('abstains from learned identity on a distant feature pattern or cadence mismatch',()=>{
-  const fp=learn();expect(classifyMagneticDisturbance(trace(15000,20),50,[fp],context).learningMatch).toBeNull();
-  const faster=trace(15000).map((s,i)=>({...s,timestampMs:15000+i*20}));expect(classifyMagneticDisturbance(faster,50,[fp],context).learningMatch).toBeNull();
+  const fp=learn();const distant=classifyMagneticDisturbance(trace(15000,20),50,[fp],context);expect(distant.learningMatch).toBeNull();expect(distant.learningDiagnostics.reason).toBe('SIGNATURE_MISMATCH');expect(distant.learningDiagnostics.nearestDistance).not.toBeNull();
+  const faster=trace(15000).map((s,i)=>({...s,timestampMs:15000+i*20}));const cadence=classifyMagneticDisturbance(faster,50,[fp],context);expect(cadence.learningMatch).toBeNull();expect(cadence.learningDiagnostics.reason).toBe('CADENCE_MISMATCH');
  });
  it('ignores legacy, nonfinite, and false-confidence profiles; users cannot teach solar origin',()=>{
   const fp=learn();const profiles=[{...fp,protocolVersion:undefined},{...fp,userConfirmed:false},{...fp,signature:{...fp.signature,peakDeltaMicroT:Infinity}},{...fp,objectClassId:'GEOMAGNETIC_SOLAR_DISTURBANCE' as const}];

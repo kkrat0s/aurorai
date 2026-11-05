@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -9,10 +9,8 @@ import Svg, {
   RadialGradient,
   Stop,
 } from 'react-native-svg';
-import type {
-  DisturbanceClassId,
-  DisturbanceClassificationResult,
-} from '@aurorasense/shared/magnetic-classifier';
+import type { DisturbanceClassificationResult } from '@aurorasense/shared/magnetic-classifier';
+import { canPresentMagneticDetection, hasSalientMagneticChange, magneticGuessCopy } from '../detection-presentation';
 
 interface MagneticField3DViewProps {
   currentMagMicroT: number;
@@ -25,7 +23,6 @@ interface MagneticField3DViewProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onZeroBaseline?: () => void;
-  onConfirmObject?: (classId: DisturbanceClassId, label: string, observed: DisturbanceClassificationResult) => void;
   isScreenTouched?: boolean;
   compact?: boolean;
 }
@@ -77,18 +74,6 @@ function polyStr(pts: Array<{ x: number; y: number }>): string {
   return pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
 }
 
-const QUICK_VALIDATE_ITEMS: Array<{
-  classId: DisturbanceClassId;
-  icon: string;
-  label: string;
-}> = [
-  { classId: 'HUMAN_HAND_GESTURE', icon: '🖐️', label: 'Hand' },
-  { classId: 'SMARTWATCH_OR_MAGNET', icon: '⌚', label: 'Watch' },
-  { classId: 'LAPTOP_OR_COMPUTER', icon: '💻', label: 'Laptop' },
-  { classId: 'CHARGING_CABLE_INDUCTION', icon: '🔌', label: 'Charger' },
-  { classId: 'STRUCTURAL_METALLIC_MASS', icon: '🔑', label: 'Metal' },
-];
-
 export function MagneticField3DView({
   currentMagMicroT,
   hasMeasurement = true,
@@ -100,20 +85,18 @@ export function MagneticField3DView({
   isMuted,
   onToggleMute,
   onZeroBaseline,
-  onConfirmObject,
   isScreenTouched = false,
   compact = false,
 }: MagneticField3DViewProps) {
   const [phase, setPhase] = useState(0);
-  const [customLabel, setCustomLabel] = useState('');
   const [userRot, setUserRot] = useState({ x: 0.46, y: -0.38 });
   const dragRef = useRef({ startX: 0.46, startY: -0.38 });
+  const eventSuppressed = useRef(false);
 
-  // Ephemeral AI Object Whisper state: only visible during or shortly after an active perturbation
+  // Ephemeral pattern guess: only visible during or shortly after an active perturbation.
   const [whisperVisibleUntil, setWhisperVisibleUntil] = useState<number>(0);
-  const [justValidatedLabel, setJustValidatedLabel] = useState<string | null>(null);
   const [lastActiveClassification, setLastActiveClassification] =
-    useState<DisturbanceClassificationResult>(classification);
+    useState<DisturbanceClassificationResult | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -123,21 +106,24 @@ export function MagneticField3DView({
   }, []);
 
   const absDeltaNt = Math.abs(deltaNt);
-  const isPerturbed =
-    absDeltaNt > 320 ||
-    isScreenTouched ||
-    (classification.predictedClass !== 'CLEAN_GEOMAGNETIC_BASELINE' &&
-      classification.predictedClass !== 'GEOMAGNETIC_SOLAR_DISTURBANCE' &&
-      absDeltaNt > 180);
+  const isPerturbed = hasSalientMagneticChange(classification, deltaNt, hasMeasurement);
 
   useEffect(() => {
-    if (isPerturbed && classification.trainable && !isScreenTouched && !customLabel) {
+    if (!isPerturbed) eventSuppressed.current = false;
+    if (!eventSuppressed.current && canPresentMagneticDetection(classification, deltaNt, hasMeasurement, isScreenTouched)) {
       setLastActiveClassification(classification);
       setWhisperVisibleUntil(Date.now() + 5500);
     }
-  }, [isPerturbed, classification, isScreenTouched, customLabel]);
+  }, [isPerturbed, classification, deltaNt, hasMeasurement, isScreenTouched]);
 
-  const showEphemeralCard = Date.now() < whisperVisibleUntil || isPerturbed || justValidatedLabel !== null;
+  const showEphemeralCard = hasMeasurement && lastActiveClassification !== null
+    && !eventSuppressed.current && Date.now() < whisperVisibleUntil;
+
+  const dismissDetection = () => {
+    eventSuppressed.current = true;
+    setWhisperVisibleUntil(0);
+    setLastActiveClassification(null);
+  };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -335,23 +321,17 @@ export function MagneticField3DView({
   );
   const centerProj = project3D({ x: 0, y: 0, z: 0 }, rotX, rotY, rotZ, cx, cy);
 
-  const handleConfirm = (classId: DisturbanceClassId, label: string) => {
-    if (!lastActiveClassification.trainable) return;
-    onConfirmObject?.(classId, label, lastActiveClassification);
-    setJustValidatedLabel(label);
-    setCustomLabel('');
-    setTimeout(() => {
-      setJustValidatedLabel(null);
-      setWhisperVisibleUntil(0);
-    }, 1400);
-  };
-
-  const activeMeta = lastActiveClassification.metadata;
+  const activeMeta = lastActiveClassification?.metadata;
+  const activeGuess = lastActiveClassification ? magneticGuessCopy(lastActiveClassification.predictedClass) : null;
+  const recognitionStatus = classification.evidenceStatus === 'HEURISTIC_ONLY'
+    ? 'ON-DEVICE PATTERN GUESS · TENTATIVE'
+    : classification.evidenceStatus === 'INSUFFICIENT_DATA'
+      ? 'NOT ENOUGH CLEAN DATA TO GUESS'
+      : null;
 
   return (
     <View
       style={[styles.container, compact && styles.containerCompact]}
-      {...panResponder.panHandlers}
     >
       {/* MINIMAL FLOATING HUD: ONLY NUMBER (µT), ΔnT, AND ICON ORBS */}
       <View style={styles.topHud}>
@@ -392,9 +372,10 @@ export function MagneticField3DView({
         </View>
       </View>
 
+      {recognitionStatus ? <Text style={styles.patternStatus}>{recognitionStatus}</Text> : null}
       <Text style={styles.whisperSub}>Conceptual field animation · one local sensor, not a reconstructed field map</Text>
       {/* 3D INTERACTIVE VIEWPORT */}
-      <View style={styles.canvasWrap}>
+      <View style={styles.canvasWrap} {...panResponder.panHandlers}>
         <Svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}>
           <Defs>
             <RadialGradient id="auraGlow" cx="50%" cy="50%" r="50%">
@@ -556,69 +537,30 @@ export function MagneticField3DView({
         </Svg>
       </View>
 
-      {/* EPHEMERAL AI OBJECT WHISPER CARD (ONLY APPEARS WHEN AN OBJECT PERTURBS THE FIELD) */}
-      {showEphemeralCard ? (
+      {/* EPHEMERAL OBJECT GUESS; never asks the participant to name or verify it. */}
+      {showEphemeralCard && lastActiveClassification && activeMeta && activeGuess ? (
         <View style={[styles.whisperCard, { borderColor: activeMeta.color || primaryColor }]}>
-          {justValidatedLabel ? (
-            <View style={styles.validatedRow}>
-              <Text style={styles.validatedText}>
-                User-confirmed label saved: {justValidatedLabel}
+          <View style={styles.whisperHeader}>
+            <Text style={styles.whisperIcon}>{activeMeta.icon}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guessEyebrow}>AURORASENSE GUESSES</Text>
+              <Text style={[styles.whisperTitle, { color: activeMeta.color || primaryColor }]} numberOfLines={1}>
+                {activeGuess.headline}
               </Text>
             </View>
-          ) : (
-            <>
-              <View style={styles.whisperHeader}>
-                <Text style={styles.whisperIcon}>{activeMeta.icon}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[styles.whisperTitle, { color: activeMeta.color || primaryColor }]}
-                    numberOfLines={1}
-                  >
-                    {lastActiveClassification.confidence >= 0.78
-                      ? activeMeta.name
-                      : `Pattern hypothesis: ${activeMeta.name} — Confirm?`}
-                  </Text>
-                  <Text style={styles.whisperSub} numberOfLines={1}>
-                    {(lastActiveClassification.confidence * 100).toFixed(0)}/100 heuristic score · label the known test object:
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => setWhisperVisibleUntil(0)}
-                  style={styles.dismissBtn}
-                  hitSlop={8}
-                >
-                  <Text style={styles.dismissBtnText}>✕</Text>
-                </Pressable>
-              </View>
-
-              {onConfirmObject && lastActiveClassification.trainable ? (
-                <View style={styles.validatePillsRow}>
-                  <TextInput accessibilityLabel="New object label" value={customLabel} onChangeText={setCustomLabel} maxLength={64} placeholder="Name a new test object" placeholderTextColor="#8ea8c4" style={{ color: '#eff7ff', minWidth: 180, padding: 8 }} />
-                  <Pressable disabled={!customLabel.trim()} onPress={() => handleConfirm('UNKNOWN_UNCLASSIFIED', customLabel.trim())} style={styles.validatePill}><Text style={styles.validatePillText}>Save new pattern</Text></Pressable>
-                  {QUICK_VALIDATE_ITEMS.map((item) => {
-                    const isCurrentGuess = lastActiveClassification.predictedClass === item.classId;
-                    return (
-                      <Pressable
-                        key={item.classId}
-                        onPress={() => handleConfirm(item.classId, item.label)}
-                        style={[
-                          styles.validatePill,
-                          isCurrentGuess && {
-                            borderColor: activeMeta.color || primaryColor,
-                            backgroundColor: 'rgba(56, 217, 169, 0.16)',
-                          },
-                        ]}
-                      >
-                        <Text style={styles.validatePillText}>
-                          {item.icon} {item.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
-            </>
-          )}
+            <Pressable
+              onPress={dismissDetection}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss object guess"
+              style={styles.dismissBtn}
+              hitSlop={8}
+            >
+              <Text style={styles.dismissBtnText}>✕</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.guessPlayful}>{activeGuess.playfulLine}</Text>
+          <Text style={styles.whisperSub}>{lastActiveClassification.aiReasoning}</Text>
+          <Text style={styles.guessLimit}>Local heuristic · tentative, uncalibrated · no object identity is saved.</Text>
         </View>
       ) : null}
     </View>
@@ -722,6 +664,10 @@ const styles = StyleSheet.create({
     color: '#8ea8c4',
     marginTop: 1,
   },
+  patternStatus: { color: '#b9a5ff', fontSize: 9.5, lineHeight: 13, marginTop: -3 },
+  guessEyebrow: { color: '#68edc3', fontSize: 8.5, fontWeight: '900', letterSpacing: 1 },
+  guessPlayful: { color: '#eff7ff', fontSize: 11, fontWeight: '700', lineHeight: 15, marginTop: 7 },
+  guessLimit: { color: '#8ea8c4', fontSize: 9, lineHeight: 12, marginTop: 5 },
   dismissBtn: {
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -730,34 +676,6 @@ const styles = StyleSheet.create({
     color: '#6b89a8',
     fontSize: 13,
     fontWeight: '800',
-  },
-  validatePillsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-  },
-  validatePill: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: '#0b1e36',
-    borderWidth: 1,
-    borderColor: '#1d4068',
-  },
-  validatePillText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#d9ecff',
-  },
-  validatedRow: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  validatedText: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: '#20c997',
   },
   subtleHintRow: {
     alignItems: 'center',

@@ -5,13 +5,10 @@ import {analyzeSensorSession,parseSensorSession,type SensorSession} from '@auror
 import {evaluateSessionPrescriptively} from '@aurorasense/shared/prescriptive-evaluator';
 import {
   classifyMagneticDisturbance,
-  createUserLearnedFingerprint,
-  UNIVERSAL_FINGERPRINT_DATABASE,
+  magneticGuessCopy,
   SPACE_WEATHER_GROUND_SCALES,
   GRANITE_WINDOWSILL_PHYSICS,
   type DevicePhysicalContext,
-  type DisturbanceClassId,
-  type LearnedUserFingerprint,
 } from '@aurorasense/shared/magnetic-classifier';
 import {
   runDemoCoordinator,
@@ -22,7 +19,7 @@ import {
   evaluateSamOpticalSegmentation,
 } from '@aurorasense/coordinator';
 import {type Catalog,type ClockMode,REPLAY_START,REPLAY_END,visibleForecasts,formatUtc,dataFreshness} from '../lib/catalog';
-import {LOCATIONS,solarElevation,darkness} from '../lib/viewing';
+import {solarElevation,darkness} from '../lib/viewing';
 import Icon,{type IconName} from './icons';
 import Chart from './chart';
 import Ensemble from './ensemble';
@@ -30,6 +27,8 @@ import PolarMap from './polar-map';
 import EvaluationPanel from './evaluation-panel';
 import RecordedMetaRun from './recorded-meta-run';
 import { LiveReferencePanel } from './live-reference-panel';
+import { useBrowserLocation } from './use-browser-location';
+import { rankGroundStations, type GroundReference } from '@aurorasense/shared/ground-reference';
 import { AuroraEvidencePanel } from './aurora-evidence-panel';
 import { SolarMagnetosphere3DCanvas } from './solar-storm-3d';
 
@@ -61,8 +60,10 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const [whyStep,setWhyStep]=useState(0);
   const [hemisphere,setHemisphere]=useState<'north'|'south'>('north');
   const [night,setNight]=useState(true);
-  const [location,setLocation]=useState(0);
-  const [phoneRegion,setPhoneRegion]=useState<number|null>(null);
+  const browserLocation=useBrowserLocation(mode==='live'&&(tab==='map'||tab==='ground'));
+  const chosen=useMemo(()=>browserLocation.position?{...browserLocation.position.location,name:'Your approximate area'}:undefined,[browserLocation.position]);
+  const groundStationQuery=rankGroundStations(chosen).join(',');
+  useEffect(()=>{if(chosen)setHemisphere(chosen.latitude<0?'south':'north');},[chosen]);
   const [session,setSession]=useState<SensorSession|null>(null);
   const [fileError,setFileError]=useState('');
   const [agent,setAgent]=useState<DemoCoordinatorResult|null>(null);
@@ -74,11 +75,6 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const [simStandstill, setSimStandstill] = useState(true);
   const [simTouched, setSimTouched] = useState(false);
   const [simCharging, setSimCharging] = useState(false);
-  const [userFingerprints, setUserFingerprints] = useState<LearnedUserFingerprint[]>([]);
-  const [teachOpen, setTeachOpen] = useState(false);
-  const [teachClass, setTeachClass] = useState<DisturbanceClassId | null>(null);
-  const [customLabel, setCustomLabel] = useState('');
-  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [dbStatus, setDbStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
   const [dbResult, setDbResult] = useState<{ submissionId?: string; sha256?: string; message?: string } | null>(null);
   const [journeyStep, setJourneyStep] = useState<number>(1);
@@ -97,7 +93,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const dialog=useRef<HTMLDialogElement>(null);
 
   const webClassification = useMemo(() => {
-    // Explicit synthetic trajectory for testing the teaching UI; not measured phone noise.
+    // Explicit synthetic trajectory for testing the label-free guess UI; not measured phone noise.
     const jitter=simDisturbance>=15?.8:.05;
     const samples=Array.from({length:24},(_,i)=>({x:18+simDisturbance*.52*i/23+jitter*Math.sin(i),y:-4+simDisturbance*.32*i/23-jitter*Math.sin(i),z:44.3+simDisturbance*.92*i/23,timestampMs:5000+simTrial*10000+i*100}));
     const physicalContext: DevicePhysicalContext = {
@@ -112,29 +108,9 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
       sensorDeviceKey: 'synthetic-web-demo',
       acquisitionRunId: 'synthetic-web-demo',
     };
-    return classifyMagneticDisturbance(samples, Math.hypot(18,-4,44.3), userFingerprints, physicalContext);
-  }, [simDisturbance, simTrial, userFingerprints, simStandstill, simTouched, simCharging]);
-
-  function handleConfirmCorrect() {
-    if(!webClassification.trainable){setFeedbackMsg('This example is not eligible for teaching. Check motion/touch and sample quality.');return;}
-    if(webClassification.predictedClass==='UNKNOWN_UNCLASSIFIED'){setTeachOpen(true);setTeachClass('UNKNOWN_UNCLASSIFIED');return;}
-    const fp = createUserLearnedFingerprint(webClassification, webClassification.predictedClass);
-    setUserFingerprints(prev => [fp, ...prev].slice(0, 20));
-    setFeedbackMsg(`Synthetic example labeled: ${webClassification.metadata.shortLabel}.`);
-    setTimeout(() => setFeedbackMsg(null), 4000);
-  }
-
-  function handleTeachSubmit(classId: DisturbanceClassId) {
-    if(!webClassification.trainable){setFeedbackMsg('Example not eligible for teaching.');return;}
-    const label = customLabel.trim() || UNIVERSAL_FINGERPRINT_DATABASE[classId].name;
-    const fp = createUserLearnedFingerprint(webClassification, classId, label);
-    setUserFingerprints(prev => [fp, ...prev].slice(0, 20));
-    setTeachOpen(false);
-    setTeachClass(null);
-    setCustomLabel('');
-    setFeedbackMsg(`Synthetic user label saved for '${label}'.`);
-    setTimeout(() => setFeedbackMsg(null), 4500);
-  }
+    return classifyMagneticDisturbance(samples, Math.hypot(18,-4,44.3), [], physicalContext);
+  }, [simDisturbance, simTrial, simStandstill, simTouched, simCharging]);
+  const webGuess = magneticGuessCopy(webClassification.predictedClass);
 
   function stopWebAudio(){
     if(audioCtxRef.current){
@@ -205,14 +181,14 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   }, [session,qc,prescriptiveReport]);
   const metaSparkInsight=useMemo(()=>measuredSummary&&qc?evaluateSparkMeasurementInsight({sessionSummary:measuredSummary,qcResult:{accepted:qc.accepted,flags:qc.flags}}):null,[measuredSummary,qc]);
   const metaWonderCritique=useMemo(()=>measuredSummary&&qc&&metaSparkInsight?evaluateWonderRedTeam({sparkVerdict:metaSparkInsight.scientificVerdict,sessionSummary:measuredSummary,qcResult:{accepted:qc.accepted,flags:qc.flags},independentSitesCount:1,professionalStationCoherence:false}):null,[measuredSummary,qc,metaSparkInsight]);
-  const [liveGroundContext,setLiveGroundContext]=useState<unknown>(null);
+  const [liveGroundContext,setLiveGroundContext]=useState<GroundReference|null>(null);
   useEffect(()=>{
     if(mode!=='live')return;
     let active=true; const controller=new AbortController();
     const update=async()=>{
       const results=await Promise.allSettled([
         fetch('/api/noaa',{signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error('NOAA unavailable');return r.json();}),
-        fetch('/api/ground?station=BOU',{signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error('USGS unavailable');return r.json();})
+        fetch(`/api/ground?stations=${groundStationQuery}`,{signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error('USGS unavailable');return r.json();})
       ]);
       if(!active)return;
       if(results[0].status==='fulfilled'){const data=results[0].value;setCatalog(c=>({...c,latestNoaa:data.latestNoaa}));setRefreshStatus(data.errors?.join(' ')||'NOAA refreshed.');}else setRefreshStatus('NOAA unavailable; retained snapshot keeps original timestamps.');
@@ -220,8 +196,8 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
     };
     void update(); const interval=setInterval(()=>{void update();},120000);
     return()=>{active=false;controller.abort();clearInterval(interval);};
-  },[mode]);
-  const metaAuroraAlert=useMemo(()=>evaluateEvidenceFromNoaa({asOfUtc:time,mode:mode==='live'?'LIVE':'REPLAY',latitudeDeg:LOCATIONS[location].latitude,longitudeDeg:LOCATIONS[location].longitude,latestNoaa:catalog.latestNoaa,groundReference:liveGroundContext}),[time,mode,location,catalog.latestNoaa,liveGroundContext]);
+  },[mode,groundStationQuery]);
+  const metaAuroraAlert=useMemo(()=>evaluateEvidenceFromNoaa({asOfUtc:time,mode:mode==='live'?'LIVE':'REPLAY',latitudeDeg:chosen?.latitude??NaN,longitudeDeg:chosen?.longitude??NaN,latestNoaa:catalog.latestNoaa,groundReference:liveGroundContext}),[time,mode,chosen,catalog.latestNoaa,liveGroundContext]);
 
   const metaSamResult = useMemo(() => {
     return evaluateSamOpticalSegmentation({
@@ -265,8 +241,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
   const wind=mode==='live'?catalog.latestNoaa.solarWind:null;
   const latestMag=wind?.samples.findLast(s=>s.bzNt!==null);
   const latestPlasma=wind?.samples.findLast(s=>s.speedKmS!==null);
-  const chosen=LOCATIONS[location];
-  const elevation=solarElevation(chosen.latitude,chosen.longitude,time);
+  const elevation=chosen?solarElevation(chosen.latitude,chosen.longitude,time):null;
   const forecastTimes=forecasts.map(f=>Date.parse(f.predictedArrivalUtc));
   const spread=forecastTimes.length>1?((Math.max(...forecastTimes)-Math.min(...forecastTimes))/3_600_000).toFixed(1):null;
   const switchMode=(next:ClockMode)=>{setMode(next);record('CLOCK_MODE_CHANGED',next);};
@@ -291,7 +266,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
           <section className="panel context-card"><div className="context-icon"><Icon name="sensor" size={28}/></div><div><div className="tiny-label">NEXT LINK IN THE EVIDENCE</div><h3>What happened on the ground?</h3><p>Compare this event with actual USGS Boulder measurements.</p></div><button className="circle-button" aria-label="Open Ground Truth" onClick={()=>setTab('ground')}><Icon name="arrow"/></button></section>
         </>}
 
-        {tab==='map'&&<section className="panel map-panel"><div className="panel-heading"><div><div className="eyebrow">02 / AURORA MAP</div><h2>Activity is a clue. Visibility is local.</h2></div><Badge tone="violet">MODEL FORECAST</Badge></div><div className="map-toolbar"><div className="segmented compact"><button className={hemisphere==='north'?'selected':''} onClick={()=>setHemisphere('north')}>Northern</button><button className={hemisphere==='south'?'selected':''} onClick={()=>setHemisphere('south')}>Southern</button></div><label className="checkbox"><input type="checkbox" checked={night} onChange={e=>setNight(e.target.checked)}/>Twilight shading</label></div><PolarMap ovation={ovation} time={time} hemisphere={hemisphere} night={night} selectedLocation={chosen}/><div className="map-legend"><span>Lower activity</span><div/><span>Higher activity</span></div><p className="fine centered">NOAA modeled auroral activity · geographic polar graticule · no local visibility probability</p>{ovation?<><Source name="NOAA OVATION · model valid time" url={ovation.sourceUrl} time={ovation.validAtUtc}/><p className="fine">Input observed {formatUtc(ovation.observedAtUtc)} · {dataFreshness(ovation.observedAtUtc,time).toUpperCase()} · forecast horizon supplied by NOAA only.</p></>:<p className="notice">The historical model layer is unavailable. Current NOAA data is never relabeled as a May 2024 forecast.</p>}<div className="layer-list"><div><span className="layer-dot violet"/><span>Modeled auroral activity</span><Badge>{ovation?'NOAA SNAPSHOT':'UNAVAILABLE'}</Badge></div><div><span className="layer-dot mint"/><span>Ground magnetic evidence</span><Badge>{mode==='replay'?'BOU REFERENCE':'USGS · GROUND TAB'}</Badge></div><div><span className="layer-dot amber"/><span>Independently confirmed sightings</span><Badge>NONE LOADED</Badge></div></div><AuroraEvidencePanel result={metaAuroraAlert}/><div className="location-card"><label className="tiny-label" htmlFor="region">COARSE VIEWING REGION</label><select id="region" value={location} onChange={e=>setLocation(Number(e.target.value))}>{LOCATIONS.map((l,i)=><option key={l.name} value={i}>{l.name}</option>)}</select><div className="stat-row"><Stat label="LOCAL LIGHT" value={darkness(elevation)} detail={`Solar elevation ≈ ${elevation.toFixed(0)}° · calculated`}/><Stat label="CLOUD COVER" value="Unknown" detail="No weather source connected"/></div><p className="fine">Approximate geometric Sun position; no cloud, terrain or refraction correction. Geographic location only; validated magnetic coordinates are not yet available. No precise location is requested.</p></div></section>}
+        {tab==='map'&&<section className="panel map-panel"><div className="panel-heading"><div><div className="eyebrow">02 / AURORA MAP</div><h2>Activity is a clue. Visibility is local.</h2></div><Badge tone="violet">MODEL FORECAST</Badge></div><div className="map-toolbar"><div className="segmented compact"><button className={hemisphere==='north'?'selected':''} onClick={()=>setHemisphere('north')}>Northern</button><button className={hemisphere==='south'?'selected':''} onClick={()=>setHemisphere('south')}>Southern</button></div><label className="checkbox"><input type="checkbox" checked={night} onChange={e=>setNight(e.target.checked)}/>Twilight shading</label></div><PolarMap ovation={ovation} time={time} hemisphere={hemisphere} night={night} selectedLocation={chosen} referenceStation={mode==='replay'?{stationId:'BOU',latitude:40.137,longitude:-105.237}:liveGroundContext??undefined}/><div className="map-legend"><span>Lower activity</span><div/><span>Higher activity</span></div><p className="fine centered">NOAA modeled auroral activity · geographic polar graticule · no local visibility probability</p>{ovation?<><Source name="NOAA OVATION · model valid time" url={ovation.sourceUrl} time={ovation.validAtUtc}/><p className="fine">Input observed {formatUtc(ovation.observedAtUtc)} · {dataFreshness(ovation.observedAtUtc,time).toUpperCase()} · forecast horizon supplied by NOAA only.</p></>:<p className="notice">The historical model layer is unavailable. Current NOAA data is never relabeled as a May 2024 forecast.</p>}<div className="layer-list"><div><span className="layer-dot violet"/><span>Modeled auroral activity</span><Badge>{ovation?'NOAA SNAPSHOT':'UNAVAILABLE'}</Badge></div><div><span className="layer-dot mint"/><span>Ground magnetic evidence</span><Badge>{mode==='replay'?'BOU REFERENCE':'USGS · GROUND TAB'}</Badge></div><div><span className="layer-dot amber"/><span>Independently confirmed sightings</span><Badge>NONE LOADED</Badge></div></div>{chosen?<AuroraEvidencePanel result={metaAuroraAlert}/>:<div className="location-card"><h3>Global space-weather context</h3><p>NOAA activity and solar-wind observations remain available while local viewing conditions await location permission.</p><div className="stat-row"><Stat label="UPSTREAM IMF Bz" value={latestMag?.bzNt==null?'Awaiting source':`${latestMag.bzNt.toFixed(1)} nT`} detail={latestMag?`${formatUtc(latestMag.observedAtUtc)} · ${dataFreshness(latestMag.observedAtUtc,time).toUpperCase()}`:'Retrying NOAA'}/><Stat label="SOLAR WIND" value={latestPlasma?.speedKmS==null?'Awaiting source':`${latestPlasma.speedKmS.toFixed(0)} km/s`} detail={latestPlasma?`${formatUtc(latestPlasma.observedAtUtc)} · ${dataFreshness(latestPlasma.observedAtUtc,time).toUpperCase()}`:'Independent source refresh'}/></div></div>}<div className="location-card"><div className="eyebrow">{chosen?'LOCATION DETECTED · APPROXIMATE AREA':'AUTOMATIC LOCATION'}</div><p>{browserLocation.status==='locating'?'Finding your approximate area…':chosen?'Your location selects the local model cell and nearest reporting stations automatically.':browserLocation.status==='denied'?'Location permission is off. Global NOAA data remains available.':'Allow location to add local darkness and aurora context.'}</p>{mode==='live'&&<button className="text-button" onClick={browserLocation.refresh} disabled={browserLocation.status==='locating'}>{chosen?'Refresh location':'Use my location'}</button>}{elevation!==null&&<div className="stat-row"><Stat label="LOCAL LIGHT" value={darkness(elevation)} detail={`Solar elevation ≈ ${elevation.toFixed(0)}° · calculated`}/><Stat label="CLOUD COVER" value="Unknown" detail="No weather source connected"/></div>}<details><summary>Location privacy</summary><p className="fine">The browser requests permission. Only a half-degree approximate cell is kept in memory; precise coordinates are discarded. Station requests contain station IDs only. Location is never sent to Meta or added to imported recordings.</p></details></div></section>}
 
         {tab==='ground'&&<>
           <section className="panel" style={{borderColor:'#1b426b'}}>
@@ -335,13 +310,13 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
             <div style={{background:'#061322',borderRadius:'10px',padding:'10px 12px',borderLeft:'3px solid #68edc3',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'10px'}}>
               <span style={{fontSize:'12px',color:'#dbe8f5',flex:1,minWidth:'220px'}}>
                 {([
-                  'Step 1 — Local magnetic patterns: explore a known nearby object, inspect the suggestion and confirm or correct its label. The animation is conceptual; device identity accuracy is unmeasured.',
+                  'Step 1 — Local magnetic patterns: hold the phone still and bring one known nearby object close. AuroraSense makes one tentative on-device guess; there is no label or identity confirmation. The animation is conceptual and object accuracy is unmeasured.',
                   'Step 2 — Placement checks: inspect motion, touch and charging context. These checks cannot establish an uncontaminated geomagnetic signal; record a full stationary baseline.',
                   'Step 3 — Solar physics: the conceptual animation illustrates CME propagation, compression and reconnection. It is not inferred from the phone signal.',
                   'Step 4 — Acquire: 30 seconds tests collection, two minutes establishes the QC baseline and ten minutes supports a professional-reference comparison. QC is deterministic.',
                   'Step 5 — Compare: NOAA upstream solar wind is context. Use actual simultaneous USGS scalar F for a ground-field comparison; inspect all timestamps and units.',
                   'Step 6 — Evidence gap: inspect the recorded real Spark tool run and separate scripted policy replay. No live participant network or invitation delivery is configured.',
-                  'Step 7 — Local aurora evidence: use the Aurora Map and select a coarse region. Source-based guidance has no calibrated sighting probability; automatic push delivery is not configured.',
+                  'Step 7 — Local aurora evidence: use the Aurora Map with automatic location. Source-based guidance has no calibrated sighting probability; automatic push delivery is not configured.',
                 ])[journeyStep-1]}
               </span>
               {journeyStep===1 && <button className="secondary-button" onClick={()=>setDrawer('why')} style={{padding:'6px 12px',fontSize:'11.5px'}}>Open 5-Step Science Story</button>}
@@ -560,7 +535,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
             <button className="text-button" onClick={()=>{setSession(null);record('PHONE_SESSION_FORGOTTEN','Removed imported data from component memory');}}>Forget imported session</button></>}
             <div className="import-row"><label className="secondary-button">Import sensor JSON<input type="file" accept=".json,application/json" onChange={e=>{void importSession(e.target.files?.[0]);e.target.value='';}}/></label><small>Processed locally in this browser. No upload.</small></div>{fileError&&<p className="error" role="alert">{fileError}</p>}
           </section>
-          <section className="panel"><div className="panel-heading"><div><h3>{mode==='replay'?'Professional reference · Boulder':'Professional ground reference'}</h3><p>Independent observatory measurements</p></div><Badge tone="mint">{mode==='replay'?'HISTORICAL OBSERVATORY':'LIVE USGS'}</Badge></div>{mode==='replay'?<><Chart points={referencePoints} label={`USGS Boulder ${reference?.component??'F'} absolute magnetic field in nanotesla`} unit="nT"/><Source name={`USGS BOU · ${reference?.component??'F'} · ${reference?.status??'unknown status'}`} url={reference?.sourceUrl??'https://geomag.usgs.gov/'} time={reference?.retrievedAtUtc}/><p className="fine">Absolute {reference?.component==='F'?'scalar field magnitude':'geographic component'} · 1-minute cadence · retrospective adjusted record. Original operational availability is unknown. Historical reference is not evidence of a current phone correlation.</p></>:<><label className="tiny-label" htmlFor="phone-region">PHONE COARSE REGION</label><select id="phone-region" value={phoneRegion??''} onChange={e=>setPhoneRegion(e.target.value===''?null:Number(e.target.value))}><option value="">Unknown — choose before comparing</option>{LOCATIONS.map((region,index)=><option key={region.name} value={index}>{region.name}</option>)}</select><LiveReferencePanel session={session} qc={qc} coarseLocation={phoneRegion===null?undefined:LOCATIONS[phoneRegion]}/></>}</section>
+          <section className="panel"><div className="panel-heading"><div><h3>{mode==='replay'?'Professional reference · Boulder':'Professional ground reference'}</h3><p>Independent observatory measurements</p></div><Badge tone="mint">{mode==='replay'?'HISTORICAL OBSERVATORY':'LIVE USGS'}</Badge></div>{mode==='replay'?<><Chart points={referencePoints} label={`USGS Boulder ${reference?.component??'F'} absolute magnetic field in nanotesla`} unit="nT"/><Source name={`USGS BOU · ${reference?.component??'F'} · ${reference?.status??'unknown status'}`} url={reference?.sourceUrl??'https://geomag.usgs.gov/'} time={reference?.retrievedAtUtc}/><p className="fine">Absolute {reference?.component==='F'?'scalar field magnitude':'geographic component'} · 1-minute cadence · retrospective adjusted record. Original operational availability is unknown. Historical reference is not evidence of a current phone correlation.</p></>:<><LiveReferencePanel session={session} qc={qc} coarseLocation={chosen} upstream={wind}/><p className="fine">{chosen?'Reference selected for your approximate current area.':browserLocation.status==='locating'?'Finding your area; checking reporting stations in parallel.':'Checking available stations; location permission enables proximity ranking.'} Imported recordings do not inherit this device’s current location.</p>{!chosen&&<button className="text-button" onClick={browserLocation.refresh} disabled={browserLocation.status==='locating'}>Use my location</button>}</>}</section>
         </>}
       </div>
 
@@ -577,9 +552,9 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
       <div className="notice" style={{marginTop:'18px',padding:'18px',borderRadius:'16px',background:'#071526',border:'1px solid #1a334d'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:'10px',marginBottom:'12px'}}>
           <div>
-            <div style={{color:'var(--mint)',fontSize:'10px',fontWeight:'800',letterSpacing:'1.2px'}}>INTERACTIVE FIELD & AI SIMULATOR</div>
-            <h3 style={{margin:'4px 0',color:'#eff7ff',fontSize:'16px'}}>Magnetic Field & Solar Wind Reconnection</h3>
-            <p style={{margin:0,fontSize:'12px',color:'#b0c1d4'}}>Observe how local objects warp magnetic field lines compared to uniform geomagnetic flux.</p>
+            <div style={{color:'var(--mint)',fontSize:'10px',fontWeight:'800',letterSpacing:'1.2px'}}>INTERACTIVE FIELD &amp; LOCAL GUESS SIMULATOR</div>
+            <h3 style={{margin:'4px 0',color:'#eff7ff',fontSize:'16px'}}>A synthetic magnetic pattern challenge</h3>
+            <p style={{margin:0,fontSize:'12px',color:'#b0c1d4'}}>This synthetic signal drives a label-free heuristic guess, not a Muse Spark call. Field lines are conceptual, not a reconstructed field.</p>
           </div>
           <button className="secondary-button" onClick={toggleWebAudio} style={{padding:'8px 14px',fontSize:'12px'}}>
             <Icon name="spark" size={14}/> {webAudioRunning?'Stop Humming':'Start Ambient Humming 🔊'}
@@ -620,7 +595,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
         <div style={{background:'#071626',borderRadius:'10px',padding:'10px 12px',border:'1px solid #1a3552',marginBottom:'12px'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
             <span style={{fontSize:'9.5px',fontWeight:'800',color:'#7fa1c4',letterSpacing:'0.8px'}}>MULTI-MODAL PHYSICAL SENSORS</span>
-            <span style={{fontSize:'10px',color:'#68edc3',fontWeight:'bold'}}>Live Hardware Inputs</span>
+            <span style={{fontSize:'10px',color:'#68edc3',fontWeight:'bold'}}>Synthetic inputs</span>
           </div>
           <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
             <button
@@ -720,22 +695,21 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
           </div>
         </div>
 
-        <button className="secondary-button" onClick={()=>setSimTrial(value=>value+1)}>Repeat synthetic trial (independent window)</button>
-        <p className="fine">SYNTHETIC PHONE SIMULATION · human-confirmed labels are teaching examples, not verified recognition accuracy. Repeat a trial to test retrieval; the training window cannot validate itself.</p>
-        {/* Live AI Guesstimate & Physics Explainability */}
+        <button className="secondary-button" onClick={()=>setSimTrial(value=>value+1)}>Replay synthetic sample</button>
+        <p className="fine">SYNTHETIC PHONE SIMULATION · changing the trace does not teach, label or save an object identity.</p>
+        {/* Local pattern guess & explainability */}
         <div style={{background:'#0c1b2c',borderRadius:'10px',padding:'14px',border:`1.5px solid ${webClassification.metadata.color}`,marginBottom:'12px'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
             <span style={{fontSize:'13.5px',fontWeight:'700',color:webClassification.metadata.color}}>
-              {webClassification.metadata.icon} Local pattern suggestion: {webClassification.metadata.name}
+              {webClassification.metadata.icon} AuroraSense guesses: {webGuess.headline}
             </span>
-            <span style={{fontSize:'11px',fontWeight:'bold',color:webClassification.metadata.color,background:`${webClassification.metadata.color}22`,padding:'3px 8px',borderRadius:'6px'}}>
-              {Math.round(webClassification.confidence*100)}/100 similarity score
-            </span>
+            <span style={{fontSize:'9px',fontWeight:'bold',color:webClassification.metadata.color,background:`${webClassification.metadata.color}22`,padding:'3px 8px',borderRadius:'6px'}}>LOCAL HEURISTIC · TENTATIVE</span>
           </div>
+          <p style={{fontSize:'11.5px',color:'#dbe7f5',lineHeight:'1.4',margin:'0 0 8px'}}>{webGuess.playfulLine}</p>
 
-          {/* Dynamic Physics Reasoning */}
+          {/* Dynamic classifier reasoning */}
           <div style={{background:'#071422',borderRadius:'6px',padding:'8px 10px',marginBottom:'10px',borderLeft:`3px solid ${webClassification.metadata.color}`}}>
-            <strong style={{fontSize:'10.5px',color:'#ffd58c',display:'block',marginBottom:'3px'}}>💡 How AI Guesses This:</strong>
+            <strong style={{fontSize:'10.5px',color:'#ffd58c',display:'block',marginBottom:'3px'}}>💡 Why this is the guess:</strong>
             <span style={{fontSize:'11.5px',color:'#dbe7f5',lineHeight:'1.4'}}>{webClassification.aiReasoning}</span>
           </div>
 
@@ -753,84 +727,14 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
               <div style={{fontSize:'8.5px',color:'#7e9cb8',fontWeight:'bold'}}>Jitter Ripple</div>
               <div style={{fontSize:'11px',fontWeight:'bold',color:'#eff7ff'}}>{(webClassification.signature.jitterRatio * 100).toFixed(0)}%</div>
             </div>
-            <div>
-              <div style={{fontSize:'8.5px',color:'#7e9cb8',fontWeight:'bold'}}>Amplitude / 100 nT</div>
-              <div style={{fontSize:'11px',fontWeight:'bold',color:webClassification.solarStormSignalRatio > 10 ? '#ffd58c' : '#68edc3'}}>
-                {webClassification.solarStormSignalRatio}x
-              </div>
-            </div>
+            <div><div style={{fontSize:'8.5px',color:'#7e9cb8',fontWeight:'bold'}}>Sample window</div><div style={{fontSize:'11px',fontWeight:'bold',color:'#eff7ff'}}>{webClassification.signature.sampleCount} points</div></div>
           </div>
-
-          {/* Feedback message banner */}
-          {feedbackMsg && (
-            <div style={{background:'#0c3a2d',color:'#7bf7cb',padding:'6px 10px',borderRadius:'6px',fontSize:'11px',fontWeight:'bold',textAlign:'center',marginBottom:'10px',border:'1px solid #20c997'}}>
-              {feedbackMsg}
-            </div>
-          )}
-
-          {/* Interactive Human-in-the-Loop Actions */}
-          <div style={{display:'flex',gap:'8px'}}>
-            <button
-              onClick={handleConfirmCorrect}
-              style={{flex:1,padding:'7px 10px',borderRadius:'6px',background:'#133b2e',border:'1px solid #20c997',color:'#68edc3',fontSize:'11.5px',fontWeight:'700',cursor:'pointer'}}
-            >
-              👍 Yes, Correct!
-            </button>
-            <button
-              onClick={()=>setTeachOpen(!teachOpen)}
-              style={{flex:1,padding:'7px 10px',borderRadius:'6px',background:'#24194d',border:'1px solid #7c4dff',color:'#b9a5ff',fontSize:'11.5px',fontWeight:'700',cursor:'pointer'}}
-            >
-              ✎ Teach AI Object
-            </button>
-          </div>
-
-          {/* Teach AI Object Dropdown Drawer */}
-          {teachOpen && (
-            <div style={{marginTop:'10px',padding:'10px',background:'#081320',borderRadius:'8px',border:'1px solid #213d5e'}}>
-              <div style={{fontSize:'11px',fontWeight:'bold',color:'#ffd58c',marginBottom:'6px'}}>
-                Select the true physical object near phone:
-              </div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'8px'}}>
-                {Object.values(UNIVERSAL_FINGERPRINT_DATABASE).map(entry => (
-                  <button
-                    key={entry.id}
-                    onClick={() => { setTeachClass(entry.id); handleTeachSubmit(entry.id); }}
-                    style={{
-                      padding:'6px 8px',
-                      borderRadius:'6px',
-                      background: teachClass === entry.id ? `${entry.color}33` : '#0d1d2e',
-                      border:`1px solid ${entry.color}`,
-                      color:entry.color,
-                      fontSize:'10.5px',
-                      fontWeight:'600',
-                      cursor:'pointer',
-                      textAlign:'left',
-                    }}
-                  >
-                    {entry.icon} {entry.shortLabel}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                placeholder="Optional nickname (e.g. Dell XPS, MagSafe puck)"
-                value={customLabel}
-                onChange={e => setCustomLabel(e.target.value)}
-                style={{width:'100%',padding:'6px',borderRadius:'4px',background:'#0a1827',border:'1px solid #1f3957',color:'#eff7ff',fontSize:'11px',boxSizing:'border-box'}}
-              />
-            </div>
-          )}
-
-          {/* User Learned Fingerprints Counter */}
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'8px',paddingTop:'6px',borderTop:'1px solid #14283d',fontSize:'10px',color:'#7693b0'}}>
-            <span>🧠 {userFingerprints.length} User Fingerprints Learned</span>
-            <span style={{fontFamily:'monospace'}}>Hash: {webClassification.fingerprintHash}</span>
-          </div>
+          <p className="fine" style={{margin:0}}>No numeric confidence is shown: this local rule-based pattern guess is uncalibrated and is not a Muse Spark response.</p>
         </div>
 
         {/* Interactive Hand Slider */}
         <label style={{display:'flex',alignItems:'center',gap:'10px',fontSize:'11.5px',flexWrap:'wrap',marginBottom:'12px'}}>
-          <span style={{fontWeight:'bold',color:'#eff7ff'}}>Simulate Hand / Object Proximity:</span>
+          <span style={{fontWeight:'bold',color:'#eff7ff'}}>Simulate Local Field Change:</span>
           <input type="range" min="0" max="50" step="0.2" value={simDisturbance} onChange={e=>updateWebAudio(Number(e.target.value))} style={{flex:1,minWidth:'180px'}}/>
           <strong style={{color:webClassification.metadata.color,fontVariantNumeric:'tabular-nums'}}>
             +{simDisturbance.toFixed(1)} µT ({(simDisturbance*1000).toFixed(0)} nT)
@@ -865,7 +769,7 @@ export default function Dashboard({initialCatalog,evaluation}:{initialCatalog:Ca
             </div>
 
             <div style={{background:'#0a1c2e',padding:'8px 10px',borderRadius:'6px',borderLeft:'3px solid #68edc3'}}>
-              <strong style={{color:'#68edc3',display:'block',marginBottom:'3px'}}>🧠 How AI Isolates Solar Storms vs. Local Objects:</strong>
+              <strong style={{color:'#68edc3',display:'block',marginBottom:'3px'}}>How local patterns are screened:</strong>
               <span>Solar storm ionospheric deflections move over minutes (dB/dt &lt; 0.20 µT/s). Human hand gestures and permanent magnets shift fields in seconds (dB/dt &gt; 1.0–5.0 µT/s) — over 1,000x faster! Sensor fusion of verified accelerometer STANDSTILL, capacitive HANDS OFF, and battery power prevents false positives.</span>
             </div>
           </div>

@@ -1,5 +1,7 @@
 # Three-minute demo: execution gates and exact current route
 
+> **November 4 recording update:** use the [current timed script](video-script-2026-11-04.md), [clean voice-over](voiceover-2026-11-04.txt) and [requirements check](requirements-2026-11-04.md). The checkpoint table below predates the verified October 31 accepted iPhone acquisition and November 4 real Muse Spark run. Its old pending-phone/pending-model status must not be used as the latest evidence. The real run had zero phone sessions, blocked invitation delivery and an INCONCLUSIVE report; hosted participant delivery remains unverified.
+
 Read `plan.md` §1.2–1.3 before recording. This is an execution checklist for the existing storyboard, not a replacement specification. Do not record the final submission until the physical-phone and real-Meta gates pass.
 
 | Shot | Working route/action | Current evidence / unresolved gate |

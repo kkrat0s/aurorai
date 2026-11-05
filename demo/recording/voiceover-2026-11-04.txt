@@ -1,0 +1,15 @@
+A phone can detect a magnetic spike. The hard part is knowing what it means. Here, a controlled local disturbance is flagged. One phone is not enough to establish a regional storm.
+
+AuroraSense connects space-weather forecasts, ground measurements, and a Meta-powered scientific coordinator, so people can explore the aurora and investigate what their sensors actually recorded.
+
+Start with Storm Track. We're replaying the May twenty twenty-four storm using NASA's archived arrival predictions: ten submissions from seven methods. Move the clock to inspect what had been submitted. The spread shows disagreement, not a guaranteed arrival or severity.
+
+Now switch to Live. Aurora Map shows NOAA's modeled auroral activity with its actual valid time. Darkness adds viewing context; missing clouds stay unknown. Modeled activity, magnetic disturbance, and a confirmed sighting are three different kinds of evidence.
+
+Ground Truth brings the experiment to your phone: explicit consent, foreground recording, stop, and export. One ten-minute iPhone recording captured five thousand nine hundred eighty-five samples and passed our fixed quality checks. Historical USGS measurements provide separate storm context. Passing phone quality checks does not establish a solar cause.
+
+Here's where Meta acts. This is a recorded, genuine Muse Spark one point three run, with public USGS data and no phone sessions loaded. Spark selected tools to inspect coverage, retrieve reference evidence, and request regional validation. It then requested an opt-in observation. Delivery wasn't configured, so the request was blocked: nobody was contacted. The deterministic validator returned inconclusive, and the report preserved that conclusion. Seven permitted tools and bounded model calls keep the workflow inspectable. The model chooses investigative steps; the scientific validator controls the verdict.
+
+We also tested a thirty-minute ground-field model on held-out historical events. The history model's mean absolute error was slightly worse than persistence, and it lost to the matched simpler model. We report that result. Phone-driven forecasting gains remain an open research question.
+
+Tap Why to follow solar-wind energy through magnetic reconnection and particle precipitation, to oxygen and nitrogen emitting auroral light. Our next experiment is independent, synchronized phone and reference measurements. AuroraSense: see the storm, question the signal, follow the evidence.

@@ -1,9 +1,12 @@
 import { QC_VERSION, type SensorQcResult, type SensorSession } from './sensor';
 
 export const GROUND_STATIONS = [
-  { id: 'BOU', name: 'Boulder, Colorado' }, { id: 'FRD', name: 'Fredericksburg, Virginia' },
-  { id: 'BSL', name: 'Stennis, Mississippi' }, { id: 'CMO', name: 'College, Alaska' },
-  { id: 'TUC', name: 'Tucson, Arizona' },
+  // Geographic coordinates from the USGS Geomagnetism observatory pages.
+  { id: 'BOU', name: 'Boulder, Colorado', latitude: 40.1375, longitude: -105.2372 },
+  { id: 'FRD', name: 'Fredericksburg, Virginia', latitude: 38.2047, longitude: -77.3729 },
+  { id: 'BSL', name: 'Stennis, Mississippi', latitude: 30.3507, longitude: -89.6359 },
+  { id: 'CMO', name: 'College, Alaska', latitude: 64.8742, longitude: -147.8597 },
+  { id: 'TUC', name: 'Tucson, Arizona', latitude: 32.1745, longitude: -110.7337 },
 ] as const;
 export type GroundStationId = typeof GROUND_STATIONS[number]['id'];
 export type GroundReference = {
@@ -14,9 +17,18 @@ export type GroundReference = {
   freshness: 'fresh' | 'stale' | 'missing' | 'future'; sha256: string;
   samples: { observedAtUtc: string; value: number | null }[];
 };
-export type GroundResponse = { reference: GroundReference | null; stations: typeof GROUND_STATIONS; errors: string[] };
+export type GroundResponse = { reference: GroundReference | null; stations: typeof GROUND_STATIONS; errors: string[]; selection?: { mode: 'automatic' | 'requested'; attemptedStationIds: GroundStationId[]; fallback: boolean } };
 export const GROUND_COMPARISON_VERSION = 'phone-usgs-minute-v1.0.0';
-export type CoarseLocation = { latitude: number; longitude: number };
+export type CoarseLocation = { latitude: number; longitude: number; uncertaintyKm?: number };
+/** Discard precise coordinates immediately; 0.5-degree cells remain local to the client. */
+export function coarseLocationFromCoordinates(latitude: number, longitude: number, accuracyMeters = 0): CoarseLocation | undefined {
+  if (![latitude, longitude, accuracyMeters].every(Number.isFinite) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180 || accuracyMeters < 0 || accuracyMeters > 50_000) return undefined;
+  return { latitude: Math.round(latitude * 2) / 2, longitude: Math.round(longitude * 2) / 2, uncertaintyKm: 40 + accuracyMeters / 1000 };
+}
+/** Client sends only ranked public station IDs, never the user's coordinates. */
+export function rankGroundStations(location?: CoarseLocation): GroundStationId[] {
+  return [...GROUND_STATIONS].sort((a, b) => location ? (stationDistanceKm(location, a) ?? Infinity) - (stationDistanceKm(location, b) ?? Infinity) : 0).map(station => station.id);
+}
 export type GroundComparison = {
   version: typeof GROUND_COMPARISON_VERSION;
   status: 'NO_PHONE' | 'NO_REFERENCE' | 'QC_REJECTED' | 'NO_OVERLAP' | 'INSUFFICIENT_COVERAGE' | 'CONTEXT_ONLY' | 'DESCRIPTIVE_COMPARISON';
@@ -71,8 +83,8 @@ export function comparePhoneWithReference(session: SensorSession | null, qc: Sen
   if (paired.length < 8 || paired.slice(1).some((p, i) => p.time - paired[i].time !== 60_000)) return { ...result, status: 'INSUFFICIENT_COVERAGE', reasons: ['Need at least eight consecutive common UTC minute bins before reporting descriptive correlation.'] };
   if (groundFreshness(reference, nowUtc) !== 'fresh') reasons.push('The reference is missing, stale or future-dated for live comparison.');
   if (paired.some(sample => sample.time > now)) reasons.push('A matched minute is in the future; live comparison cannot use it.');
-  if (result.distanceKm === null) reasons.push('Phone-to-station distance is unknown; select a coarse region before interpreting local agreement.');
-  else if (result.distanceKm > 500) reasons.push(`Reference is about ${Math.round(result.distanceKm)} km from the selected coarse region; it is context, not local corroboration.`);
+  if (result.distanceKm === null) reasons.push('Recording location is unverified; the station remains reference context.');
+  else if (!Number.isFinite(location?.uncertaintyKm ?? 0) || (location?.uncertaintyKm ?? 0) < 0 || result.distanceKm + (location?.uncertaintyKm ?? 0) > 500) reasons.push(`Reference is about ${Math.round(result.distanceKm)} km away; distance and location uncertainty do not establish local corroboration.`);
   const uncertainty = session.utcAnchor?.uncertaintyMs;
   if (uncertainty === null || uncertainty === undefined || !Number.isFinite(uncertainty) || uncertainty < 0 || uncertainty > 5000) reasons.push('Phone UTC anchoring uncertainty is unknown, invalid or exceeds five seconds.');
   if (reasons.length) return { ...result, status: 'CONTEXT_ONLY', reasons };

@@ -1,4 +1,5 @@
 import { apiBaseUrl } from './api-base';
+import { useForegroundLocation, rememberCaptureLocation, forgetCaptureLocation } from './foreground-location';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Switch, Text, View } from 'react-native';
 import { Accelerometer, Magnetometer } from 'expo-sensors';
@@ -27,10 +28,8 @@ import { evaluateSessionPrescriptively } from '@aurorasense/shared/prescriptive-
 import * as Battery from 'expo-battery';
 import {
   classifyMagneticDisturbance,
-  parseLearnedFingerprints,
   type DevicePhysicalContext,
   type DisturbanceClassificationResult,
-  type LearnedUserFingerprint,
   type MagneticSample,
 } from '@aurorasense/shared/magnetic-classifier';
 import { MagneticSoundscapeEngine, BLOOM_PENTATONIC_SCALE, type BloomNote } from './audio-synthesizer';
@@ -38,7 +37,6 @@ import { RealtimeMotionDetector, type MotionAnalysis } from './motion-detector';
 import { MagneticFieldVisualizer } from './components/MagneticFieldVisualizer';
 import { PhysicalSensorContextPills } from './components/PhysicalSensorContextPills';
 import { MagneticFieldScaleBar } from './components/MagneticFieldScaleBar';
-import { AiObjectLearningCard } from './components/AiObjectLearningCard';
 import { SolarReconnectionCard } from './components/SolarReconnectionCard';
 import { SevenStepsGuidedJourney, type ScanDurationOption } from './components/SevenStepsGuidedJourney';
 import { StormTrackScreen } from './components/StormTrackScreen';
@@ -48,9 +46,14 @@ import { WhyModal } from './components/WhyModal';
 import { MuseSparkDrawer } from './components/MuseSparkDrawer';
 import { MagnetismIntroAnimation } from './components/MagnetismIntroAnimation';
 
-const fingerprintFile = () => new File(Paths.document, 'aurorasense-patterns-v2.json');
 const savedFile = () => new File(Paths.document, 'aurorasense-session.json');
 const exportsDirectory = () => new Directory(Paths.cache, 'aurorasense-exports');
+function batteryMarkerKind(state: Battery.BatteryState): SensorMarker['kind'] | null {
+  if (state === Battery.BatteryState.CHARGING) return 'BATTERY_CHARGING';
+  if (state === Battery.BatteryState.FULL) return 'BATTERY_FULL';
+  if (state === Battery.BatteryState.UNPLUGGED) return 'BATTERY_UNPLUGGED';
+  return null;
+}
 const colors = {
   background: '#040d1a',
   panel: '#0a192b',
@@ -128,13 +131,13 @@ export default function App() {
   const [soundMuted, setSoundMuted] = useState(false);
   const [mag, setMag] = useState<number | null>(null);
   const [delta, setDelta] = useState<number | null>(null);
+  const [livePhonePoints, setLivePhonePoints] = useState<Array<{ receivedAtUtc: string; sensorTimestampSeconds: number; magnitudeMicroT: number; deltaNt: number }>>([]);
   const [vector, setVector] = useState<{ x: number; y: number; z: number } | null>(null);
   const [activeNote, setActiveNote] = useState<BloomNote>(BLOOM_PENTATONIC_SCALE[0]);
   const [calibrating, setCalibrating] = useState(false);
   const [calibCountdownMs, setCalibCountdownMs] = useState(2000);
   const [maxDelta, setMaxDelta] = useState(1.5);
   const [aiClassification, setAiClassification] = useState<DisturbanceClassificationResult | null>(null);
-  const [userFingerprints, setUserFingerprints] = useState<LearnedUserFingerprint[]>([]);
   const [showSolarDetails, setShowSolarDetails] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -146,6 +149,7 @@ export default function App() {
   const [targetDurationSec, setTargetDurationSec] = useState<ScanDurationOption>(30);
   const targetDurationRef = useRef<ScanDurationOption>(30);
   const [showIntro, setShowIntro] = useState(true);
+  useForegroundLocation(!showIntro);
   const [titleFlash, setTitleFlash] = useState(true);
   const [titleMenuOpen, setTitleMenuOpen] = useState(false);
 
@@ -178,28 +182,23 @@ export default function App() {
   const idleSubscription = useRef<{ remove: () => void } | null>(null);
   const accelSubscription = useRef<{ remove: () => void } | null>(null);
   const lastUpdateRef = useRef(0);
+  const lastPhoneTracePointMsRef = useRef(-Infinity);
   const lastAiClassifyRef = useRef(0);
   const calibrationSamplesRef = useRef<number[]>([]);
   const calibrationEndTimeRef = useRef(0);
   const rollingSamplesRef = useRef<MagneticSample[]>([]);
-  const userFingerprintsRef = useRef<LearnedUserFingerprint[]>([]);
 
   const motionDetector = useRef(new RealtimeMotionDetector());
   const isScreenTouchedRef = useRef(false);
   const lastTouchEndMs = useRef<number | null>(null);
+  const lastTouchMarkerMs = useRef(Number.NEGATIVE_INFINITY);
   const foregroundRef = useRef(AppState.currentState === 'active');
   const idleGenerationRef = useRef(0);
   const previewAllowedRef = useRef(true);
   const isChargingRef = useRef(false);
   const batteryKnownRef = useRef(false);
+  const batteryStateRef = useRef(Battery.BatteryState.UNKNOWN);
   const acquisitionRunIdRef = useRef(`capture-${Date.now()}`);
-  useEffect(() => {
-    let active=true;
-    const file=fingerprintFile();
-    if(file.exists) void file.text().then(text=>{if(!active)return;const profiles=parseLearnedFingerprints(JSON.parse(text));userFingerprintsRef.current=profiles;setUserFingerprints(profiles);}).catch(()=>setStatus('Saved pattern library could not be read; no profiles loaded.'));
-    return()=>{active=false;};
-  }, []);
-
   function getPhysicalContext(): DevicePhysicalContext {
     const motion = motionDetector.current.analyze();
     const now = performance.now();
@@ -217,37 +216,6 @@ export default function App() {
       sampleKind: 'MEASURED',
       acquisitionRunId: acquisitionRunIdRef.current,
     };
-  }
-
-  function handleAddFingerprint(fp: LearnedUserFingerprint) {
-    if(!fp.learningEligible) { setStatus('Pattern needs a valid independent recording window before labeling.'); return; }
-    userFingerprintsRef.current = parseLearnedFingerprints([fp, ...userFingerprintsRef.current]).slice(0, 30);
-    try { fingerprintFile().write(JSON.stringify(userFingerprintsRef.current)); } catch { setStatus('Pattern retained in memory; local save failed.'); }
-    setUserFingerprints([...userFingerprintsRef.current]);
-    if (rollingSamplesRef.current.length >= 4 && baselineRef.current !== null) {
-      const updated = classifyMagneticDisturbance(
-        rollingSamplesRef.current,
-        baselineRef.current,
-        userFingerprintsRef.current,
-        getPhysicalContext()
-      );
-      setAiClassification(updated);
-    }
-  }
-
-  function handleClearFingerprints() {
-    try { const file=fingerprintFile(); if(file.exists)file.delete(); } catch { setStatus('Could not remove the saved pattern library.'); return; }
-    userFingerprintsRef.current = [];
-    setUserFingerprints([]);
-    if (rollingSamplesRef.current.length >= 4 && baselineRef.current !== null) {
-      const updated = classifyMagneticDisturbance(
-        rollingSamplesRef.current,
-        baselineRef.current,
-        [],
-        getPhysicalContext()
-      );
-      setAiClassification(updated);
-    }
   }
 
   const sessionRef = useRef<SensorSession | null>(null);
@@ -315,8 +283,23 @@ export default function App() {
       baselineRef.current = totalMag;
     }
 
+    const sampleTimeMs = sensorTimestampSeconds * 1000;
     const d = totalMag - baselineRef.current;
     const absD = Math.abs(d);
+
+    // A short, in-memory display trace for the intro comparison page. Native
+    // sensor time stays monotonic; UTC here is the app receipt time, not a
+    // reconstructed measurement timestamp. This trace is never persisted.
+    if (sampleTimeMs - lastPhoneTracePointMsRef.current >= 500) {
+      lastPhoneTracePointMsRef.current = sampleTimeMs;
+      const point = {
+        receivedAtUtc: new Date().toISOString(),
+        sensorTimestampSeconds,
+        magnitudeMicroT: totalMag,
+        deltaNt: d * 1000,
+      };
+      setLivePhonePoints(previous => [...previous, point].slice(-60));
+    }
 
     // 2. Dynamic Sensitivity Scaling: Expand range to match hand distance
     if (absD > maxExcursionRef.current) {
@@ -326,7 +309,6 @@ export default function App() {
     }
 
     // 3. Rolling sample buffer for AI classifier
-    const sampleTimeMs=sensorTimestampSeconds*1000;
     if (rollingSamplesRef.current.length && sampleTimeMs<=rollingSamplesRef.current.at(-1)!.timestampMs) rollingSamplesRef.current=[];
     rollingSamplesRef.current.push({ x, y, z, timestampMs: sampleTimeMs });
     if (rollingSamplesRef.current.length > 25) {
@@ -343,7 +325,7 @@ export default function App() {
       const classification = classifyMagneticDisturbance(
         rollingSamplesRef.current,
         baselineRef.current,
-        userFingerprintsRef.current,
+        [],
         context
       );
       setAiClassification(classification);
@@ -481,17 +463,33 @@ export default function App() {
     // Initialize battery charging listener
     void Battery.getBatteryStateAsync().then((state) => {
       if (!mounted.current) return;
+      const previousState = batteryStateRef.current;
       batteryKnownRef.current = state !== Battery.BatteryState.UNKNOWN;
+      batteryStateRef.current = state;
       const charging = state === Battery.BatteryState.CHARGING || state === Battery.BatteryState.FULL;
       setIsCharging(charging);
       isChargingRef.current = charging;
+      const current = sessionRef.current;
+      const batteryMarker = batteryMarkerKind(state);
+      if (batteryMarker && previousState !== state && current && gate.current?.recording && current.markers.length < 90) {
+        const atUtc = new Date().toISOString();
+        current.markers.push({ kind: batteryMarker, atUtc, elapsedSeconds: Math.max(0, (performance.now() - startMonotonic.current) / 1000), origin: 'SYSTEM_EVENT' });
+      }
     }).catch(() => {});
 
     const batterySub = Battery.addBatteryStateListener(({ batteryState }) => {
+      const previousState = batteryStateRef.current;
       batteryKnownRef.current = batteryState !== Battery.BatteryState.UNKNOWN;
+      batteryStateRef.current = batteryState;
       const charging = batteryState === Battery.BatteryState.CHARGING || batteryState === Battery.BatteryState.FULL;
       setIsCharging(charging);
       isChargingRef.current = charging;
+      const current = sessionRef.current;
+      const batteryMarker = batteryMarkerKind(batteryState);
+      if (batteryMarker && previousState !== batteryState && current && gate.current?.recording && current.markers.length < 90) {
+        const atUtc = new Date().toISOString();
+        current.markers.push({ kind: batteryMarker, atUtc, elapsedSeconds: Math.max(0, (performance.now() - startMonotonic.current) / 1000), origin: 'SYSTEM_EVENT' });
+      }
     });
 
     // Start live monitoring immediately on app launch!
@@ -576,6 +574,7 @@ export default function App() {
           stopIdleMonitoring();
 
           const now = new Date().toISOString();
+          const initialBatteryMarker = batteryMarkerKind(batteryStateRef.current);
           sessionRef.current = {
             schemaVersion: SENSOR_SCHEMA_VERSION,
             id: `phone-${Date.now()}`,
@@ -595,7 +594,10 @@ export default function App() {
             },
             consent: { adultConfirmed: true, recording: true, version: 'foreground-local-v1', atUtc: now },
             stopReason: null,
-            markers: [{ kind: 'BASELINE', atUtc: now, elapsedSeconds: 0, origin: 'MANUAL_TOUCH' }],
+            markers: [
+              { kind: 'BASELINE', atUtc: now, elapsedSeconds: 0, origin: 'MANUAL_TOUCH' },
+              ...(initialBatteryMarker ? [{ kind: initialBatteryMarker, atUtc: now, elapsedSeconds: 0, origin: 'SYSTEM_EVENT' as const }] : []),
+            ],
             samples: [],
             ...(guided ? { experimentProtocol: EXPERIMENT_VERSION } : {}),
           };
@@ -678,6 +680,7 @@ export default function App() {
         }
       );
       if (started && gate.current!.recording && mounted.current) {
+        if (sessionRef.current) rememberCaptureLocation(sessionRef.current.id);
         setRecording(true);
         setStatus('LIVE PHONE Â· Keep phone resting flat on non-magnetic surface.');
         refresh();
@@ -782,6 +785,7 @@ export default function App() {
       const folder = exportsDirectory();
       if (folder.exists) folder.delete();
       exportFiles.current = [];
+      if (sessionRef.current) forgetCaptureLocation(sessionRef.current.id);
       sessionRef.current = null;
       refresh();
       setStatus('Local session deleted. You can start a new observation.');
@@ -799,6 +803,11 @@ export default function App() {
     <View
       style={styles.root}
       onTouchStart={() => {
+        const touchAt = performance.now();
+        if (touchAt - lastTouchMarkerMs.current >= 500) {
+          lastTouchMarkerMs.current = touchAt;
+          marker('SCREEN_INTERACTION');
+        }
         isScreenTouchedRef.current = true;
         setIsScreenTouched(true);
       }}
@@ -818,7 +827,14 @@ export default function App() {
       {recording && guidedActive.current && <GuidedCue elapsed={elapsed} late={lateCue} />}
 
       {showIntro ? (
-        <MagnetismIntroAnimation visible={showIntro} onComplete={() => setShowIntro(false)} />
+        <MagnetismIntroAnimation
+          visible={showIntro}
+          onComplete={() => setShowIntro(false)}
+          phonePoints={livePhonePoints}
+          phoneCurrentMicroT={mag}
+          phoneDeltaNt={delta === null ? null : delta * 1000}
+          isRecording={recording}
+        />
       ) : (
         <>
           {/* MINIMAL TOP HEADER: AURORASENSE FLASHES THEN DIMS; MUSE SPARK PROMINENT */}
@@ -874,13 +890,13 @@ export default function App() {
               adultConfirmed={adult}
               onChangeAdult={(val) => {
                 setAdult(val);
-                if (!val) { previewAllowedRef.current=false;stopIdleMonitoring();soundEngine.current?.setMuted(true); }
+                if (!val) { if (sessionRef.current) forgetCaptureLocation(sessionRef.current.id); previewAllowedRef.current=false;stopIdleMonitoring();soundEngine.current?.setMuted(true); }
                 gate.current!.setConsent(val, consent);
               }}
               recordingConsent={consent}
               onChangeConsent={(val) => {
                 setConsent(val);
-                if (!val) { previewAllowedRef.current=false;stopIdleMonitoring();soundEngine.current?.setMuted(true); }
+                if (!val) { if (sessionRef.current) forgetCaptureLocation(sessionRef.current.id); previewAllowedRef.current=false;stopIdleMonitoring();soundEngine.current?.setMuted(true); }
                 gate.current!.setConsent(adult, val);
               }}
               guidedProtocol={guided}
@@ -911,8 +927,6 @@ export default function App() {
               statusMessage={status}
               currentStep={currentStep}
               onSelectStep={setCurrentStep}
-              userFingerprints={userFingerprints}
-              onAddFingerprint={handleAddFingerprint}
             />
           </View>
 

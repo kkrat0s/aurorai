@@ -28,7 +28,16 @@
         }
       ],
       "expo-sharing",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "AuroraSense uses your foreground location to select aurora evidence and nearby professional magnetometers. Precise coordinates stay on your device.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ]
     ]
   }
 }

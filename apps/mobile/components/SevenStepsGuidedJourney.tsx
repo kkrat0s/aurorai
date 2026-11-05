@@ -19,16 +19,11 @@ import Svg, {
 } from 'react-native-svg';
 import {
   classifyMagneticDisturbance,
-  createUserLearnedFingerprint,
-  type DisturbanceClassId,
   type DisturbanceClassificationResult,
-  type LearnedUserFingerprint,
 } from '@aurorasense/shared/magnetic-classifier';
-import { type PrescriptiveSessionReport } from '@aurorasense/shared/prescriptive-evaluator';
 import { type SensorQcResult, type SensorSession } from '@aurorasense/shared/sensor';
-import { apiBaseUrl } from '../api-base';
 import { AuroraEvidencePanel } from './AuroraEvidencePanel';
-import { LiveReferencePanel } from './LiveReferencePanel';
+import { CaptureEvidenceAnalysis } from './CaptureEvidenceAnalysis';
 import { type MotionAnalysis } from '../motion-detector';
 import { MagneticField3DView } from './MagneticField3DView';
 
@@ -46,7 +41,6 @@ interface SevenStepsGuidedJourneyProps {
   isCharging: boolean;
   session: SensorSession | null;
   qc: SensorQcResult | null;
-  prescriptiveReport: PrescriptiveSessionReport | null;
   soundMuted: boolean;
   onToggleSound: () => void;
   onCalibrate: () => void;
@@ -67,8 +61,6 @@ interface SevenStepsGuidedJourneyProps {
   onUploadToDatabase: () => void;
   uploadStatus: string | null;
   isUploading: boolean;
-  userFingerprints?: LearnedUserFingerprint[];
-  onAddFingerprint?: (fp: LearnedUserFingerprint) => void;
 }
 
 export function SevenStepsGuidedJourney({
@@ -83,7 +75,6 @@ export function SevenStepsGuidedJourney({
   isCharging,
   session,
   qc,
-  prescriptiveReport,
   soundMuted,
   onToggleSound,
   onCalibrate,
@@ -104,7 +95,6 @@ export function SevenStepsGuidedJourney({
   onUploadToDatabase,
   uploadStatus,
   isUploading,
-  onAddFingerprint,
 }: SevenStepsGuidedJourneyProps) {
   // Clamp active stage to 1..5
   const stage = Math.min(5, Math.max(1, currentStep));
@@ -183,12 +173,6 @@ export function SevenStepsGuidedJourney({
 
   const spotColor = spotScore >= 85 ? '#20c997' : spotScore >= 55 ? '#ffd58c' : '#ff6b6b';
 
-  const handleConfirmObject = (classId: DisturbanceClassId, label: string, observed: DisturbanceClassificationResult) => {
-    if (!observed.trainable) return;
-    const fp = createUserLearnedFingerprint(observed, classId, label);
-    onAddFingerprint?.(fp);
-  };
-
   return (
     <View style={styles.root}>
       <Animated.View
@@ -217,7 +201,6 @@ export function SevenStepsGuidedJourney({
                 isMuted={soundMuted}
                 onToggleMute={onToggleSound}
                 onZeroBaseline={onCalibrate}
-                onConfirmObject={handleConfirmObject}
                 isScreenTouched={isScreenTouched}
               />
             </View>
@@ -225,7 +208,7 @@ export function SevenStepsGuidedJourney({
             <View style={styles.appleCopyBlock}>
               <Text style={styles.appleHeadline}>Explore local magnetic patterns.</Text>
               <Text style={styles.appleSubline}>
-                Move your hand, smartwatch, or laptop near the phone to watch the field respond.
+                Bring one item near the stationary phone. It will make one cautious guess—or admit it is stumped.
               </Text>
             </View>
 
@@ -240,7 +223,8 @@ export function SevenStepsGuidedJourney({
            =================================================================== */}
         {stage === 2 ? (
           <View style={styles.centeredStage}>
-            <Svg width={220} height={220} viewBox="0 0 220 220">
+            <View style={styles.spotDial} accessibilityLabel={`Placement checklist ${spotScore} out of 100`}>
+            <Svg width="100%" height="100%" viewBox="0 0 220 220">
               <Defs>
                 <RadialGradient id="spotGlow" cx="50%" cy="50%" r="50%">
                   <Stop offset="0%" stopColor={spotColor} stopOpacity="0.34" />
@@ -278,27 +262,14 @@ export function SevenStepsGuidedJourney({
                 strokeDasharray="4,4"
                 fill="none"
               />
-              <SvgText
-                x="110"
-                y="112"
-                fill="#ffffff"
-                fontSize="40"
-                fontWeight="800"
-                textAnchor="middle"
-              >
-                {spotScore}/100
-              </SvgText>
-              <SvgText
-                x="110"
-                y="134"
-                fill={spotColor}
-                fontSize="11"
-                fontWeight="800"
-                textAnchor="middle"
-              >
-                {spotScore >= 85 ? 'CHECKLIST READY' : spotScore >= 55 ? 'CHECK SETUP' : 'CHECK CONTEXT'}
-              </SvgText>
             </Svg>
+            <View pointerEvents="none" style={styles.spotScoreOverlay}>
+              <View style={styles.spotScoreContent}>
+                <Text style={styles.spotScoreValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} maxFontSizeMultiplier={1.2}>{spotScore}</Text>
+                <Text style={styles.spotScoreDenominator} numberOfLines={1} maxFontSizeMultiplier={1.2}>/ 100</Text>
+              </View>
+            </View>
+            </View>
 
             {/* Color-coded Orange -> Yellow -> Green Bar */}
             <View style={styles.colorBarContainer}>
@@ -475,27 +446,18 @@ export function SevenStepsGuidedJourney({
                 </Pressable>
               ) : null}
               <Pressable onPress={() => transitionToStage(4)} style={styles.applePrimaryBtn}>
-                <Text style={styles.applePrimaryBtnText}>View AI Insights ›</Text>
+                <Text style={styles.applePrimaryBtnText}>View Evidence Analysis ›</Text>
               </Pressable>
             </View>
           </ScrollView>
         ) : null}
 
         {/* ===================================================================
-            STAGE 4: AI INSIGHTS & SPACE WEATHER ALIGNMENT (MUSE SPARK)
+            STAGE 4: CAPTURE-BOUND SCIENTIFIC EVIDENCE ANALYSIS
            =================================================================== */}
         {stage === 4 ? (
           <ScrollView style={{flex:1}} contentContainerStyle={[styles.centeredStage,{paddingVertical:12,flexGrow:1}]}>
-            <View style={styles.appleCopyBlock}>
-              <Text style={styles.appleHeadline}>Measured field, checked evidence.</Text>
-              <Text style={styles.appleSubline}>
-                {qc ? `Phone QC: ${qc.accepted ? 'accepted for further evaluation' : 'not accepted'}. ${qc.flags.join(', ')}` : 'Finish a recording to evaluate phone quality.'}
-              </Text>
-              <Text style={styles.appleSubline}>
-                {qc?.noiseMadNt != null ? `Measured baseline MAD: ${qc.noiseMadNt.toFixed(1)} nT.` : 'Measured noise: unavailable.'} A local fluctuation does not identify a solar storm.
-              </Text>
-              {prescriptiveReport ? <Text style={styles.appleSubline}>{prescriptiveReport.activityLevel.explanation}</Text> : null}
-            </View>
+            <CaptureEvidenceAnalysis session={session} qc={qc} />
             <View style={styles.consentPanel}>
               <Text style={styles.consentTitle}>Your local recording</Text>
               <Text style={styles.consentNote}>{session?`${session.samples.length} samples · ${isRecording?'recording in progress':'local session available'}`:'No readable recording is loaded. A retained file can still be deleted below.'}</Text>
@@ -506,7 +468,6 @@ export function SevenStepsGuidedJourney({
               <Text accessibilityLiveRegion="polite" style={styles.consentNote}>{statusMessage}</Text>
               <Pressable accessibilityRole="button" onPress={()=>transitionToStage(3)} style={styles.secondaryAppleBtn}><Text style={styles.secondaryAppleBtnText}>Back to recording</Text></Pressable>
             </View>
-            <LiveReferencePanel session={session} qc={qc} apiBaseUrl={apiBaseUrl()} />
             <Pressable onPress={() => transitionToStage(5)} style={styles.applePrimaryBtn}>
               <Text style={styles.applePrimaryBtnText}>Local Aurora Evidence ›</Text>
             </Pressable>
@@ -570,6 +531,46 @@ const styles = StyleSheet.create({
   },
   fullWidthVisual: {
     width: '100%',
+  },
+  spotDial: {
+    width: 220,
+    maxWidth: '100%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  spotScoreOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spotScoreContent: {
+    width: '43%',
+    height: '43%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spotScoreValue: {
+    width: '100%',
+    color: '#ffffff',
+    fontSize: 34,
+    lineHeight: 42,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  spotScoreDenominator: {
+    color: '#aebdce',
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   appleCopyBlock: {
     alignItems: 'center',

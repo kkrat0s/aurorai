@@ -23,7 +23,7 @@ export function analyzeInteractionContext(session: SensorSession, qc: SensorQcRe
   if (session.samples.length !== qc.sampleResults.length) throw new Error('QC rows must match samples.');
   // Manual annotations are explicitly provided metadata, not a causal classifier.
   // Windows are fixed before the next acquisition; never optimized on the first run.
-  const windows = session.markers.filter(marker => marker.origin === 'MANUAL_TOUCH').map(marker => ({
+  const windows = session.markers.filter(marker => marker.kind === 'SCREEN_INTERACTION' && marker.origin === 'MANUAL_TOUCH').map(marker => ({
     startMs: Date.parse(marker.atUtc) - 1000,
     endMs: Date.parse(marker.atUtc) + 3000,
   }));

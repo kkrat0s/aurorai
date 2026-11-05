@@ -3,7 +3,7 @@ import { useEffect,useRef } from 'react';
 import type { Ovation } from '../lib/catalog';
 import { solarElevation } from '../lib/viewing';
 
-export default function PolarMap({ovation,time,hemisphere,night,selectedLocation}:{ovation:Ovation|null;time:string;hemisphere:'north'|'south';night:boolean;selectedLocation?:{name:string;latitude:number;longitude:number}}) {
+export default function PolarMap({ovation,time,hemisphere,night,selectedLocation,referenceStation}:{ovation:Ovation|null;time:string;hemisphere:'north'|'south';night:boolean;selectedLocation?:{name:string;latitude:number;longitude:number};referenceStation?:{stationId:string;latitude:number;longitude:number}}) {
   const canvas=useRef<HTMLCanvasElement>(null);
   useEffect(()=>{
     const ctx=canvas.current?.getContext('2d');if(!ctx)return;
@@ -19,7 +19,7 @@ export default function PolarMap({ovation,time,hemisphere,night,selectedLocation
     for(const lat of [30,45,60,75]){const r=(90-lat)/60*258;ctx.beginPath();ctx.arc(310,310,r,0,2*Math.PI);ctx.stroke();ctx.fillStyle='#91aabb';ctx.font='11px system-ui';ctx.fillText(`${lat}°${sign>0?'N':'S'}`,315,310-r+14);}
     for(let lon=-180;lon<180;lon+=30){const[x,y]=point(sign*30,lon);ctx.beginPath();ctx.moveTo(310,310);ctx.lineTo(x,y);ctx.stroke();}
     ctx.fillStyle='#b9c9d3';ctx.font='12px system-ui';ctx.textAlign='center';ctx.fillText(sign>0?'NORTH POLE':'SOUTH POLE',310,301);ctx.fillText(sign>0?'180°':'0°',310,31);ctx.fillText(sign>0?'0°':'180°',310,596);ctx.fillText('90°W',19,314);ctx.fillText('90°E',598,314);
-    if(sign>0){const[x,y]=point(40.137,-105.237);ctx.fillStyle='#f7ce7d';ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fill();ctx.textAlign='left';ctx.fillText('BOU reference',x+10,y+4);}
+    if(referenceStation&&referenceStation.latitude*sign>=30){const[x,y]=point(referenceStation.latitude,referenceStation.longitude);ctx.fillStyle='#f7ce7d';ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fill();ctx.textAlign=x>450?'right':'left';ctx.fillText(`${referenceStation.stationId} reference`,x>450?x-10:x+10,y+4);}
     if(selectedLocation&&selectedLocation.latitude*sign>=30){
       const[sx,sy]=point(selectedLocation.latitude,selectedLocation.longitude);
       ctx.save();
@@ -29,6 +29,6 @@ export default function PolarMap({ovation,time,hemisphere,night,selectedLocation
       ctx.fillText(selectedLocation.name,sx>450?sx-12:sx+12,sy+4);
       ctx.restore();
     }
-  },[ovation,time,hemisphere,night,selectedLocation]);
+  },[ovation,time,hemisphere,night,selectedLocation,referenceStation]);
   return <div className="polar-wrap"><canvas ref={canvas} width="620" height="620" role="img" aria-label={`${hemisphere} geographic polar map. ${ovation?'NOAA modeled auroral activity':'No auroral forecast layer available'}. ${night?'Approximate twilight shading enabled.':''}`}/>{!ovation&&<div className="map-empty"><span className="tiny-label">MODEL LAYER UNAVAILABLE</span><p>No archived OVATION frame<br/>verified for May 2024.</p><small>Switch to Live for NOAA’s latest snapshot.</small></div>}</div>;
 }

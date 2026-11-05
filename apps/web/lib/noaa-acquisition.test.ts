@@ -50,8 +50,21 @@ describe('NOAA acquisition boundaries',()=>{
     const stream=new ReadableStream({pull(c){c.enqueue(new Uint8Array(32));},cancel(){cancelled=true;}});
     await expect(boundedNoaaText(new Response(stream),10)).rejects.toThrow('size limit');expect(cancelled).toBe(true);
   });
-  it('does not cache a total outage or replace it with stale successful data',async()=>{
+  it('does not invent a fallback when the first request is a total outage',async()=>{
     const changes=Object.fromEntries(Object.values(NOAA_URLS).map(url=>[url,null]));const f=makeFetch(changes),load=createNoaaLoader(f as typeof fetch,()=>Date.parse(now));
     const data=await load();expect(Object.values(data.latestNoaa).every(v=>v===null)).toBe(true);await load();expect(f).toHaveBeenCalledTimes(8);
+  });
+  it('retains verified products across an outage without refreshing their scientific timestamps',async()=>{
+    let clock=Date.parse(now),outage=false;
+    const good=makeFetch();
+    const f=vi.fn(async(url:string|URL|Request)=>outage?new Response('',{status:503}):good(url));
+    const load=createNoaaLoader(f as typeof fetch,()=>clock);
+    const initial=await load(); outage=true; clock+=180000;
+    const retained=await load();
+    expect(retained.latestNoaa).toEqual(initial.latestNoaa);
+    expect(retained.latestNoaa.ovation?.retrievedAtUtc).toBe(now);
+    expect(retained.retrievedAtUtc).not.toBe(now);
+    expect(retained.errors.some(error=>error.includes('original timestamps'))).toBe(true);
+    expect(f).toHaveBeenCalledTimes(8);
   });
 });

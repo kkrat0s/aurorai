@@ -27,7 +27,7 @@ export type SensorSample = Vector3 & {
   accelerationG: Vector3 | null;
   accelerationAgeMs: number | null;
 };
-export type SensorMarker = { kind: 'BASELINE' | 'INTERFERENCE_START' | 'INTERFERENCE_END' | 'MOTION_START' | 'MOTION_END' | 'SCREEN_INTERACTION'; atUtc: string; elapsedSeconds: number; origin?: 'MANUAL_TOUCH' | 'SCHEDULED_CUE'; scheduledSeconds?: number };
+export type SensorMarker = { kind: 'BASELINE' | 'INTERFERENCE_START' | 'INTERFERENCE_END' | 'MOTION_START' | 'MOTION_END' | 'SCREEN_INTERACTION' | 'BATTERY_CHARGING' | 'BATTERY_FULL' | 'BATTERY_UNPLUGGED'; atUtc: string; elapsedSeconds: number; origin?: 'MANUAL_TOUCH' | 'SCHEDULED_CUE' | 'SYSTEM_EVENT'; scheduledSeconds?: number };
 export type SensorSession = {
   schemaVersion: typeof SENSOR_SCHEMA_VERSION;
   id: string;
@@ -189,7 +189,7 @@ export function parseSensorSession(value: unknown): SensorSession {
   if (uncertaintyMs !== null && uncertaintyMs < 0) throw new Error('Invalid time uncertainty.');
   if (!Array.isArray(v.markers) || v.markers.length > 100) throw new Error('Invalid experiment markers.');
   if (v.experimentProtocol !== undefined && v.experimentProtocol !== 'hands-free-protocol-0.1.0') throw new Error('Unsupported experiment protocol.');
-  const markerKinds = ['BASELINE', 'INTERFERENCE_START', 'INTERFERENCE_END', 'MOTION_START', 'MOTION_END', 'SCREEN_INTERACTION'];
+  const markerKinds = ['BASELINE', 'INTERFERENCE_START', 'INTERFERENCE_END', 'MOTION_START', 'MOTION_END', 'SCREEN_INTERACTION', 'BATTERY_CHARGING', 'BATTERY_FULL', 'BATTERY_UNPLUGGED'];
   const samples = v.samples.map((raw): SensorSample => { const row = object(raw); return { ...vector(row), sensorTimestampSeconds: number(row.sensorTimestampSeconds, 'sensorTimestampSeconds'), receivedMonotonicMs: number(row.receivedMonotonicMs, 'receivedMonotonicMs'), receivedAtUtc: timestamp(row.receivedAtUtc), accelerationG: row.accelerationG === null ? null : vector(row.accelerationG), accelerationAgeMs: row.accelerationAgeMs === null ? null : number(row.accelerationAgeMs, 'accelerationAgeMs') }; });
   return {
     schemaVersion: SENSOR_SCHEMA_VERSION, id: string(v.id, 'id'), kind: v.kind, sourceId, frame: 'DEVICE', unit: 'microT',
@@ -200,7 +200,7 @@ export function parseSensorSession(value: unknown): SensorSession {
     stopReason: v.stopReason === null ? null : string(v.stopReason, 'stopReason'),
     markers: v.markers.map((raw): SensorMarker => {
       const marker = object(raw); if (!markerKinds.includes(String(marker.kind))) throw new Error('Invalid marker.');
-      if (marker.origin !== undefined && marker.origin !== 'MANUAL_TOUCH' && marker.origin !== 'SCHEDULED_CUE') throw new Error('Invalid marker origin.');
+      if (marker.origin !== undefined && marker.origin !== 'MANUAL_TOUCH' && marker.origin !== 'SCHEDULED_CUE' && marker.origin !== 'SYSTEM_EVENT') throw new Error('Invalid marker origin.');
       const scheduledSeconds = marker.scheduledSeconds === undefined ? undefined : number(marker.scheduledSeconds, 'scheduledSeconds');
       if (scheduledSeconds !== undefined && (marker.origin !== 'SCHEDULED_CUE' || scheduledSeconds < 0 || scheduledSeconds > SENSOR_PROTOCOL.durationSeconds)) throw new Error('Invalid cue schedule.');
       return { kind: marker.kind as SensorMarker['kind'], atUtc: timestamp(marker.atUtc), elapsedSeconds: number(marker.elapsedSeconds, 'elapsedSeconds'), ...(marker.origin === undefined ? {} : { origin: marker.origin }), ...(scheduledSeconds === undefined ? {} : { scheduledSeconds }) };

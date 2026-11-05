@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { GROUND_STATIONS, groundFreshness, type GroundReference, type GroundStationId } from '@aurorasense/shared/ground-reference';
+import { GROUND_STATIONS, groundFreshness, type GroundReference, type GroundStationId, type GroundResponse } from '@aurorasense/shared/ground-reference';
 
 export const USGS_GROUND_URL = 'https://geomag.usgs.gov/ws/data/';
 export function isGroundStation(value: string): value is GroundStationId { return GROUND_STATIONS.some(station => station.id === value); }
@@ -67,4 +67,26 @@ export async function getLiveGroundReference(station: GroundStationId): Promise<
   const existing = pending.get(station); if (existing) return existing;
   const task = acquireGroundReference(station, new Date(now).toISOString()).then(reference => { cache.set(station, { reference, at: now }); return reference; }).finally(() => { pending.delete(station); });
   pending.set(station, task); return task;
+}
+
+/** Fixed allowlist, at most five cached 10-second probes; nearest fresh result wins. */
+export async function getBestLiveGroundReference(order: GroundStationId[], loader = getLiveGroundReference, nowUtc = new Date().toISOString()): Promise<GroundResponse> {
+  if (!order.length || order.length > GROUND_STATIONS.length || new Set(order).size !== order.length || order.some(id => !isGroundStation(id))) throw new Error('Invalid station order');
+  const attempts = await Promise.allSettled(order.map(id => loader(id)));
+  const errors: string[] = [];
+  const candidates = attempts.flatMap((attempt, index) => {
+    if (attempt.status === 'rejected') { errors.push(`${order[index]} refresh unavailable.`); return []; }
+    const reference = { ...attempt.value, freshness: groundFreshness(attempt.value, nowUtc) };
+    if (reference.stationId !== order[index] || reference.freshness === 'future' || reference.freshness === 'missing') { errors.push(`${order[index]} has no valid current reference.`); return []; }
+    return [reference];
+  });
+  // Freshness precedes distance. If every live feed fails, retain actual old bytes with their original times.
+  const retained = order.flatMap(id => { const entry = cache.get(id); return entry ? [{ ...entry.reference, freshness: groundFreshness(entry.reference, nowUtc) }] : []; }).filter(item => item.freshness !== 'future' && item.freshness !== 'missing');
+  const fresh = candidates.find(item => item.freshness === 'fresh');
+  const stale = [...candidates, ...retained].sort((a, b) => Date.parse(b.latestObservedAtUtc ?? '') - Date.parse(a.latestObservedAtUtc ?? ''))[0];
+  const reference = fresh ?? stale ?? null;
+  if (reference && reference.freshness !== 'fresh') errors.push(`Showing the latest verified ${reference.stationId} snapshot; its observations are ${reference.freshness}.`);
+  if (!candidates.length && reference) errors.push('Live refresh failed; retained source timestamps are unchanged.');
+  if (!reference) errors.push('Professional ground feeds could not be verified. NOAA upstream context remains a separate source.');
+  return { reference, stations: GROUND_STATIONS, errors, selection: { mode: 'automatic', attemptedStationIds: order, fallback: reference !== null && reference.stationId !== order[0] } };
 }

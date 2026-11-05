@@ -71,10 +71,13 @@ export function evaluateAuroraAlertDecision(input:unknown):AuroraAlertEvaluation
   const status=(sourceName:string,at:string|null|undefined,url:string|null|undefined,minutes:number,detail:string)=>{const entry:SourceStatus={source:sourceName,status:freshness(at,now,minutes),observedAtUtc:at??null,sourceUrl:url??null,detail};result.sourceStatus.push(entry);return entry;};
   const o=p.ovation;
   const oval=status('NOAA OVATION',o?.observedAtUtc,o?.sourceUrl,120,'Nearest geographic model cell; modeled activity, not calibrated local visibility.');
+  if(!o)oval.detail='No OVATION grid was returned by the NOAA source response.';
+  else if(Date.parse(o.retrievedAtUtc)>now+60000){oval.status='FUTURE';oval.detail='The NOAA response retrieval time is in the future relative to analysis time.';}
+  else if(oval.status==='FUTURE')oval.detail='The NOAA model observation time is in the future relative to analysis time.';
+  else if(oval.status==='STALE')oval.detail='The latest NOAA model observation exceeds the 120-minute freshness window.';
   if(o&&oval.status==='FRESH'){
     const valid=Date.parse(o.validAtUtc),observed=Date.parse(o.observedAtUtc);
-    if(Date.parse(o.retrievedAtUtc)>now+60000){oval.status='FUTURE';oval.detail='Acquisition time is in the future.';}
-    else if(valid<observed||valid-observed>120*60000||observed>Date.parse(o.retrievedAtUtc)+60000){oval.status='INVALID';oval.detail='Forecast times are inconsistent or outside the supported model horizon.';}
+    if(valid<observed||valid-observed>120*60000||observed>Date.parse(o.retrievedAtUtc)+60000){oval.status='INVALID';oval.detail='Forecast times are inconsistent or outside the supported model horizon.';}
     else if(now-valid>15*60000){oval.status='STALE';oval.detail='The model valid time is no longer current.';}
     else {
       let nearest=Infinity,activity:number|null=null,nearby=0;
@@ -121,6 +124,17 @@ export function evaluateAuroraAlertDecision(input:unknown):AuroraAlertEvaluation
   }else if(solarWatch||kpWatch){result.alertLevel='ELEVATED_WATCH';result.title='Space-weather watch; local visibility unknown';result.summary='Upstream or planetary evidence is elevated, but a fresh local OVATION frame is missing. No local visibility probability can be inferred.';}
   const invalidStatusNames:Record<string,string[]>={ovation:['NOAA OVATION'],solarWind:['NOAA IMF Bz','NOAA plasma'],kp:['NOAA estimated Kp'],groundReference:['Professional ground F']};
   for(const key of invalidSources)for(const entry of result.sourceStatus)if(invalidStatusNames[key].includes(entry.source)){entry.status='INVALID';entry.detail='Source payload failed validation and was excluded.';}
+  if(result.localOvationActivity===null&&result.alertLevel==='INSUFFICIENT_DATA'){
+    const currentOvation=result.sourceStatus.find(item=>item.source==='NOAA OVATION');
+    const freshContext=result.sourceStatus.filter(item=>item.source.startsWith('NOAA ')&&item.source!=='NOAA OVATION'&&item.status==='FRESH').map(item=>item.source);
+    const modelDetail=currentOvation?.status==='MISSING'&&currentOvation.detail.includes('No grid cell within')
+      ?'The nearest modeled grid cell is more than 250 km away; this location is outside the supported local-cell coverage.'
+      :`NOAA OVATION is ${currentOvation?.status.toLowerCase()??'unavailable'}: ${currentOvation?.detail??'No current local model status was returned.'}`;
+    const contextDetail=freshContext.length
+      ?`Fresh global context remains available from ${freshContext.join(', ')}, but it cannot replace a location-matched aurora-model cell.`
+      :'No upstream context product is currently fresh. Check the source rows and refresh/API connection.';
+    result.summary=`A local model estimate cannot be supported. ${modelDetail} ${contextDetail} Missing or distant data do not mean geomagnetic activity is absent.`;
+  }
   result.localMeasurementTrigger.recommended=result.alertLevel==='ELEVATED_WATCH';
   result.localMeasurementTrigger.reason=result.localMeasurementTrigger.recommended?'If already opted in, a stationary 10-minute record can investigate ground response; independent sites and a matching professional reference are still required.':result.localMeasurementTrigger.reason;
   result.sourceStatus.filter(s=>s.status!=='FRESH').forEach(s=>result.limitations.push(`${s.source}: ${s.status.toLowerCase()}.`));
