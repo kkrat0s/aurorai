@@ -1,0 +1,3 @@
+# Scientific inputs are byte-hashed. Preserve the original frozen bytes on every OS.
+science/experiments/*_protocol.json -text whitespace=cr-at-eol
+science/results/learning_cases.json -text whitespace=cr-at-eol

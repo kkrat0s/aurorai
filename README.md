@@ -172,6 +172,8 @@ npm run test:science
 
 See [full results](docs/evaluation-results.md), [methods](docs/science-methods.md) and `science/results/` for event splits, exclusions, coefficients and checksums. The Broomfield archive is **NO-GO for a validated historical phone-storm claim**; exploratory overlap does not establish stationary calibrated devices.
 
+The frozen protocol and case files are checked by byte-level SHA-256. `.gitattributes` preserves their original line endings across Windows and Linux; do not reformat them. Offline reproduction validates these hashes before fitting any model.
+
 ## Meta integration and seven scientific tools
 
 | Tool | Function |

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import unittest
 
@@ -55,6 +56,10 @@ class LearningTests(unittest.TestCase):
     def test_saved_run_has_no_event_overlap_or_operational_claim(self):
         result = json.loads((ROOT / "science/results/baseline_comparison.json").read_text())
         protocol = json.loads((ROOT / "science/experiments/learning_protocol.json").read_text())
+        # Checkout line-ending conversion must not invalidate the frozen artifacts.
+        for path, key in [("science/experiments/learning_protocol.json", "protocolSha256"),
+                          ("science/results/learning_cases.json", "casesSha256")]:
+            self.assertEqual(hashlib.sha256((ROOT / path).read_bytes()).hexdigest(), result[key])
         validate_split(protocol["events"])
         self.assertFalse(result["operationalClaim"])
         self.assertFalse(result["phoneContributionEvaluated"])
